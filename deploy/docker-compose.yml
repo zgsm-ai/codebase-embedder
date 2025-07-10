@@ -57,7 +57,7 @@ services:
       - shenma
 
   codebase-indexer:
-    image: zgsm/codebase-indexer:latest
+    image: zgsm/codebase-embedder:latest
     command:
       - /app/server
       - -f
@@ -66,7 +66,6 @@ services:
       - "8888:8888"
     volumes:
       - ./etc/:/app/etc/
-      - /tmp/codebase-store:/mnt/codebase-store
     restart: always
     environment:
       TZ: "Asia/Shanghai"

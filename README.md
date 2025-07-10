@@ -1,4 +1,4 @@
-# codebase-indexer
+# codebase-embedder
 
 <div align="center">
 
@@ -14,12 +14,11 @@ A powerful code indexing context retrieval service for AI programming assistants
 
 ## Overview
 
-codebase-indexer is the context module of [ZGSM (ZhuGe Smart Mind) AI Programming Assistant](https://github.com/zgsm-ai/zgsm) which running on backend. It provides powerful codebase indexing capabilities to support semantic search and code call graph relationship retrieval for RAG (Retrieval-Augmented Generation) systems.
+codebase-indexer is the context module of [ZGSM (ZhuGe Smart Mind) AI Programming Assistant](https://github.com/zgsm-ai/zgsm) which running on backend. It provides powerful codebase indexing capabilities to support semantic search for RAG (Retrieval-Augmented Generation) systems.
 
 ### Key Features
 
 - 🔍 Semantic code search with embeddings
-- 📊 Code call graph analysis and retrieval
 - 🌐 Multi-language support
 
 ## Requirements
@@ -28,6 +27,7 @@ codebase-indexer is the context module of [ZGSM (ZhuGe Smart Mind) AI Programmin
 - Docker
 - PostgreSQL
 - Redis
+- Weavaite
 
 ## Quick Start
 
@@ -35,8 +35,8 @@ codebase-indexer is the context module of [ZGSM (ZhuGe Smart Mind) AI Programmin
 
 ```bash
 # Clone the repository
-git clone https://github.com/zgsm-ai/codebase-indexer.git
-cd codebase-indexer
+git clone https://github.com/zgsm-ai/codebase-embedder.git
+cd codebase-embedder
 
 # Install dependencies
 go mod tidy
@@ -63,7 +63,6 @@ The system consists of several key components:
 
 - **Parser**: Code parsing and AST generation
 - **Embedding**: Code semantic vector generation
-- **CodeGraph**: Code relationship graph construction
 - **Store**: Data storage and indexing
 - **API**: RESTful service interface
 
@@ -75,5 +74,4 @@ This project is licensed under the [Apache 2.0 License](LICENSE).
 
 This project builds upon the excellent work of:
 
-- [Sourcegraph](https://github.com/sourcegraph) - For their pioneering work in code intelligence
 - [Tree-sitter](https://github.com/tree-sitter) - For providing robust parsing capabilities

@@ -14,13 +14,11 @@ func NewScheduler(serverCtx context.Context, svcCtx *svc.ServiceContext) (*Sched
 	if err != nil {
 		return nil, err
 	}
-	indexJob, err := NewIndexTaskScheduler(serverCtx, svcCtx)
 	if err != nil {
 		return nil, err
 	}
 	jobs := []Job{
 		cleaner,
-		indexJob,
 	}
 	return &Scheduler{
 		Jobs: jobs,

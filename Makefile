@@ -8,17 +8,7 @@ init:
 
 .PHONY:mock
 mock:
-	mockgen -source=./internal/store/codegraph/store.go -destination=./internal/store/codegraph/mocks/graph_store_mock.go -package=mocks
 	mockgen -source=internal/store/vector/vector_store.go -destination=internal/store/vector/mocks/vector_store_mock.go --package=mocks
-	mockgen -source=./internal/store/codebase/codebase_store.go -destination=./internal/store/codebase/mocks/codebase_store_mock.go -package=mocks
-	mockgen -source=./internal/store/codebase/wrapper/minio_wrapper.go -destination=./internal/store/codebase/wrapper/mocks/minio_client_mock.go -package=mocks
-	mockgen -source=internal/store/mq/mq.go -destination=internal/store/mq/mocks/mq_mock.go --package=mocks
-
-.PHONY:proto
-proto:
-	protoc --go_out=. internal/store/codegraph/definition.proto
-	protoc --go_out=. internal/store/codegraph/document.proto
-	protoc --go_out=. internal/store/codegraph/keys.proto
 
 .PHONY:test
 test:
@@ -31,8 +21,8 @@ build:
 
 .PHONY:docker
 docker:
-	docker build -t zgsm/codebase-indexer:$(TAG) .
-	docker push zgsm/codebase-indexer:$(TAG)
+	docker build -t zgsm/codebase-embedder:$(TAG) .
+	docker push zgsm/codebase-embedder:$(TAG)
 
 .PHONY:lint
 lint:

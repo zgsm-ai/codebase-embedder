@@ -13,53 +13,8 @@ import (
 
 func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 
-	server.AddRoutes(
-		[]rest.Route{
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/codebases/directory",
-				Handler: codebaseTreeHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/codebases/hash",
-				Handler: getCodebaseHashHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/files/content",
-				Handler: getFileContentHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodPost,
-				Path:    "/api/v1/files/upload",
-				Handler: syncFilesHandler(serverCtx),
-			},
-		},
-		rest.WithPrefix("/codebase-indexer"),
-	)
 
 
-	server.AddRoutes(
-		[]rest.Route{
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/search/relation",
-				Handler: relationHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/search/definition",
-				Handler: definitionQueryHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodGet,
-				Path:    "/api/v1/files/structure",
-				Handler: definitionParseHandler(serverCtx),
-			},
-		},
-		rest.WithPrefix("/codebase-indexer"),
-	)
 
 	server.AddRoutes(
 		[]rest.Route{
@@ -69,32 +24,27 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Handler: semanticSearchHandler(serverCtx),
 			},
 		},
-		rest.WithPrefix("/codebase-indexer"),
+		rest.WithPrefix("/codebase-embedder"),
 	)
 
 	server.AddRoutes(
 		[]rest.Route{
 			{
 				Method:  http.MethodDelete,
-				Path:    "/api/v1/codebase",
-				Handler: deleteCodebaseHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodDelete,
-				Path:    "/api/v1/index",
-				Handler: indexHandler(serverCtx),
+				Path:    "/api/v1/embeddings",
+				Handler: deleteIndexHandler(serverCtx),
 			},
 			{
 				Method:  http.MethodGet,
-				Path:    "/api/v1/index/summary",
+				Path:    "/api/v1/embeddings/summary",
 				Handler: summaryHandler(serverCtx),
 			},
 			{
 				Method:  http.MethodPost,
-				Path:    "/api/v1/index/task",
+				Path:    "/api/v1/embeddings",
 				Handler: taskHandler(serverCtx),
 			},
 		},
-		rest.WithPrefix("/codebase-indexer"),
+		rest.WithPrefix("/codebase-embedder"),
 	)
 }

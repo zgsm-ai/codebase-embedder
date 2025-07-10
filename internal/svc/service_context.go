@@ -5,37 +5,26 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/zeromicro/go-zero/core/logx"
-	"github.com/zgsm-ai/codebase-indexer/internal/codegraph/definition"
 	"github.com/zgsm-ai/codebase-indexer/internal/config"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/query"
 	"github.com/zgsm-ai/codebase-indexer/internal/embedding"
-	"github.com/zgsm-ai/codebase-indexer/internal/store/cache"
-	"github.com/zgsm-ai/codebase-indexer/internal/store/codebase"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/database"
-	"github.com/zgsm-ai/codebase-indexer/internal/store/mq"
 	redisstore "github.com/zgsm-ai/codebase-indexer/internal/store/redis"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
-	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"gorm.io/gorm"
 )
 
 type ServiceContext struct {
-	Config               config.Config
-	CodegraphConf        config.CodegraphConfig
-	db                   *gorm.DB
-	Querier              *query.Query
-	CodebaseStore        codebase.Store
-	MessageQueue         mq.MessageQueue
-	DistLock             redisstore.DistributedLock
-	Embedder             vector.Embedder
-	VectorStore          vector.Store
-	CodeSplitter         *embedding.CodeSplitter
-	Cache                cache.Store[any]
-	redisClient          *redis.Client // 保存Redis客户端引用以便关闭
-	FileDefinitionParser *definition.DefParser
-	serverContext        context.Context
-	TaskPool             *ants.Pool
-	CmdLogger            *tracer.CmdLogger
+	Config        config.Config
+	db            *gorm.DB
+	Querier       *query.Query
+	DistLock      redisstore.DistributedLock
+	Embedder      vector.Embedder
+	VectorStore   vector.Store
+	CodeSplitter  *embedding.CodeSplitter
+	redisClient   *redis.Client // 保存Redis客户端引用以便关闭
+	serverContext context.Context
+	TaskPool      *ants.Pool
 }
 
 // Close closes the shared Redis client and database connection
@@ -54,9 +43,6 @@ func (s *ServiceContext) Close() {
 	if s.TaskPool != nil {
 		s.TaskPool.Release()
 	}
-	if s.CmdLogger != nil {
-		s.CmdLogger.Close()
-	}
 	if len(errs) > 0 {
 		logx.Errorf("service_context close err:%v", errs)
 	} else {
@@ -70,16 +56,6 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 		Config:        c,
 		serverContext: ctx,
 	}
-	svcCtx.CodegraphConf = config.MustLoadCodegraphConfig(c.IndexTask.GraphTask.ConfFile)
-
-	// 初始化cmd日志
-	cmdLogger, err := tracer.NewCmdLogger(svcCtx.CodegraphConf.LogDir, svcCtx.CodegraphConf.RetentionDays)
-	if err != nil {
-		return nil, err
-	}
-	svcCtx.CmdLogger = cmdLogger
-	// daily clean and rotate
-	cmdLogger.StartRotateBackground()
 
 	// 初始化数据库连接
 	db, err := database.New(c.Database)
@@ -98,20 +74,7 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	}
 	svcCtx.redisClient = client
 
-	// 创建各个组件，共用Redis客户端
-	messageQueue, err := mq.NewRedisMQ(ctx, client, c.MessageQueue)
-	if err != nil {
-		return nil, err
-	}
-
 	lock, err := redisstore.NewRedisDistributedLock(client)
-	if err != nil {
-		return nil, err
-	}
-
-	cacheStore := cache.NewRedisStore[any](client)
-
-	codebaseStore, err := codebase.NewLocalCodebase(c.CodeBaseStore)
 	if err != nil {
 		return nil, err
 	}
@@ -133,10 +96,6 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	if err != nil {
 		return nil, err
 	}
-	parser, err := definition.NeDefinitionParser()
-	if err != nil {
-		return nil, err
-	}
 
 	// 初始化协程池
 	taskPool, err := ants.NewPool(svcCtx.Config.IndexTask.PoolSize, ants.WithOptions(
@@ -150,14 +109,10 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	}
 	svcCtx.TaskPool = taskPool
 
-	svcCtx.FileDefinitionParser = parser
-	svcCtx.CodebaseStore = codebaseStore
-	svcCtx.MessageQueue = messageQueue
 	svcCtx.VectorStore = vectorStore
 	svcCtx.Embedder = embedder
 	svcCtx.CodeSplitter = splitter
 	svcCtx.DistLock = lock
-	svcCtx.Cache = cacheStore
 
 	return svcCtx, err
 }

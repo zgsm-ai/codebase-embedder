@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/zgsm-ai/codebase-indexer/internal/store/codegraph"
+	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
-	"path/filepath"
+	"strings"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"gorm.io/gorm"
@@ -34,7 +34,7 @@ func NewIndexLogic(ctx context.Context, svcCtx *svc.ServiceContext) *IndexLogic 
 func (l *IndexLogic) DeleteIndex(req *types.DeleteIndexRequest) (resp *types.DeleteIndexResponseData, err error) {
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
-	indexType := req.IndexType
+	filePaths := strings.Split(req.FilePaths, ",")
 
 	// 查找代码库记录
 	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
@@ -46,35 +46,19 @@ func (l *IndexLogic) DeleteIndex(req *types.DeleteIndexRequest) (resp *types.Del
 	}
 
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
-	// 根据索引类型删除对应的索引
-	switch indexType {
-	case string(types.Embedding):
-		if err := l.svcCtx.VectorStore.DeleteByCodebase(ctx, codebase.ID, codebase.Path); err != nil {
-			return nil, fmt.Errorf("failed to delete embedding index, err:%w", err)
-		}
-	case string(types.CodeGraph):
-		graphStore, err := codegraph.NewBadgerDBGraph(codegraph.WithPath(filepath.Join(codebase.Path, types.CodebaseIndexDir)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to open graph store, err:%w", err)
-		}
-		defer graphStore.Close()
-		if err := graphStore.DeleteByCodebase(ctx, codebase.ID, codebase.Path); err != nil {
-			return nil, fmt.Errorf("failed to delete graph index, err:%w", err)
-		}
-	case string(types.All):
-		if err := l.svcCtx.VectorStore.DeleteByCodebase(ctx, codebase.ID, codebase.Path); err != nil {
-			return nil, fmt.Errorf("failed to delete embedding index, err:%w", err)
-		}
-		graphStore, err := codegraph.NewBadgerDBGraph(codegraph.WithPath(filepath.Join(codebase.Path, types.CodebaseIndexDir)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to open graph store, err:%w", err)
-		}
-		defer graphStore.Close()
-		if err := graphStore.DeleteByCodebase(ctx, codebase.ID, codebase.Path); err != nil {
-			return nil, fmt.Errorf("failed to delete graph index, err:%w", err)
-		}
-	default:
-		return nil, errs.NewInvalidParamErr("indexType", indexType)
+
+	var deleteChunks []*types.CodeChunk
+	for _, path := range filePaths {
+		deleteChunks = append(deleteChunks, &types.CodeChunk{
+			CodebaseId:   codebase.ID,
+			CodebasePath: codebase.Path,
+			FilePath:     path,
+		})
+	}
+
+	if err = l.svcCtx.VectorStore.DeleteCodeChunks(ctx, deleteChunks, vector.Options{CodebaseId: codebase.ID,
+		CodebasePath: codebase.Path}); err != nil {
+		return nil, fmt.Errorf("failed to delete embedding index, err:%w", err)
 	}
 
 	return &types.DeleteIndexResponseData{}, nil

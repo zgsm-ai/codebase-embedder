@@ -1,0 +1,90 @@
+//  goctl api go --api codebase-indexer.api --style go_zero  --dir .
+// goctl api swagger --api codebase-indexer.api --dir docs --filename swagger
+//go get -u github.com/swaggo/files
+//go get -u github.com/swaggo/gin-swagger
+//package api
+//
+//import "embed"
+//
+////go:embed docs/swagger.json
+//var FS embed.FS
+// go install gorm.io/gen/tools/gentool@latest
+// gentool -db postgres -dsn "host=localhost user=shenma password=shenma dbname=codebase_indexer port=5432 sslmode=disable TimeZone=Asia/Shanghai"   -tables "codebase,index_history,sync_history"   -outPath "./internal/dao/query" -fieldNullable True -fieldWithIndexTag True -fieldWithTypeTag True -modelPkgName model
+syntax = "v1"
+
+
+type SemanticRequest {
+	clientId     string `form:"clientId"` // 用户机器ID（如MAC地址）
+	codebasePath string `form:"codebasePath"` // 项目绝对路径
+	query        string `form:"query"` // 查询内容
+	topK         int    `form:"topK,optional,default=10"` // 结果返回数量（默认10）
+}
+
+type SemanticFileItem {
+	content  string  `json:"content"` // 代码片段
+	filePath string  `json:"filePath"` // 文件相对路径
+	score    float64 `json:"score"` // 匹配得分
+}
+
+type SemanticResponseData {
+	list []SemanticFileItem `json:"list"` // 检索结果列表
+}
+
+@server (
+	prefix: /codebase-embedder
+)
+service codebaseindexer {
+	@handler semanticSearch
+	get /api/v1/search/semantic (SemanticRequest) returns (SemanticResponseData)
+}
+
+type IndexSummaryRequest {
+	clientId     string `form:"clientId"` // 用户机器ID（如MAC地址）
+	codebasePath string `form:"codebasePath"` // 项目绝对路径
+}
+
+type EmbeddingSummary {
+	status      string `json:"status"`
+	lastIndexAt string `json:"lastSyncAt"`
+	totalFiles  int    `json:"totalFiles"`
+	totalChunks int    `json:"totalChunks"`
+}
+
+type IndexSummaryResonseData {
+	totalFiles int
+    lastSyncAt string `json:"lastSyncAt"`
+	embedding  EmbeddingSummary `json:"embedding"`
+}
+
+type IndexTaskRequest {
+	clientId     string `json:"clientId"` // 用户机器ID（如MAC地址）
+	codebasePath string `json:"codebasePath"` // 项目绝对路径
+}
+
+type IndexTaskResponseData {
+	taskId int `json:"taskId"`
+}
+
+type DeleteIndexRequest {
+	clientId     string `form:"clientId"` // 用户机器ID（如MAC地址）
+	codebasePath string `form:"codebasePath"` // 项目绝对路径
+	filePaths    string `form:"filePaths"`
+}
+
+type DeleteIndexResponseData {}
+
+@server (
+	prefix: /codebase-embedder
+)
+service codebaseindexer {
+	@handler summary
+	get /api/v1/embeddings/summary (IndexSummaryRequest) returns (IndexSummaryResonseData)
+
+	@handler add_embeddings
+	post /api/v1/embeddings (IndexTaskRequest) returns (IndexTaskResponseData)
+
+	@handler delete_embeddings
+	delete /api/v1/embeddings (DeleteIndexRequest) returns (DeleteIndexResponseData)
+
+}
+

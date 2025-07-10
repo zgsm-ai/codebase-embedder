@@ -19,7 +19,6 @@ Database:
     enable: true
 
 IndexTask:
-  Topic: "codebase_indexer:mq:sync"
   PoolSize: 20
   QueueSize: 100
   LockTimeout: 310s

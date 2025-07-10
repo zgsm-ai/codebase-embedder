@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
-	"github.com/zgsm-ai/codebase-indexer/internal/store/codegraph"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -75,23 +73,6 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 				tracer.WithTrace(ctx).Errorf("embedding summary query timed out after %v", timeoutCtx)
 			} else {
 				tracer.WithTrace(ctx).Errorf("failed to get embedding summary, err:%v", err)
-			}
-			return
-		}
-	}()
-
-	// 获取图索引状态（带超时控制）
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel() // 避免资源泄漏
-		codegraphSummary, err = getCodegraphSummary(timeoutCtx, codebase)
-		if err != nil {
-			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				tracer.WithTrace(timeoutCtx).Errorf("codegraph summary query timed out after %v", timeout)
-			} else {
-				tracer.WithTrace(timeoutCtx).Errorf("failed to get codegraph summary, err:%v", err)
 			}
 			return
 		}
@@ -186,16 +167,6 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 	}
 
 	return resp, nil
-}
-
-func getCodegraphSummary(ctx context.Context, codebase *model.Codebase) (*types.CodeGraphSummary, error) {
-	graphStore, err := codegraph.NewBadgerDBGraph(codegraph.WithPath(filepath.Join(codebase.Path, types.CodebaseIndexDir)))
-	defer graphStore.Close()
-	if err != nil {
-		tracer.WithTrace(ctx).Errorf("failed to open graph store, err:%w", err)
-		return nil, err
-	}
-	return graphStore.GetIndexSummary(ctx, codebase.ID, codebase.Path)
 }
 
 func convertStatus(status string) string {

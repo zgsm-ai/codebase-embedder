@@ -18,14 +18,13 @@ import (
 
 // baseProcessor 包含所有处理器共有的字段和方法
 type baseProcessor struct {
-	svcCtx          *svc.ServiceContext
-	params          *IndexTaskParams
-	syncFileModeMap map[string]string
-	taskHistoryId   int32
-	totalFileCnt    int32
-	successFileCnt  int32
-	failedFileCnt   int32
-	ignoreFileCnt   int32
+	svcCtx         *svc.ServiceContext
+	params         *IndexTaskParams
+	taskHistoryId  int32
+	totalFileCnt   int32
+	successFileCnt int32
+	failedFileCnt  int32
+	ignoreFileCnt  int32
 }
 
 // initTaskHistory 初始化任务历史记录
@@ -104,7 +103,7 @@ func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool 
 // processFilesConcurrently 并发处理文件
 func (p *baseProcessor) processFilesConcurrently(
 	ctx context.Context,
-	processFunc func(path string, op types.FileOp) error,
+	processFunc func(path string, content []byte) error,
 	maxConcurrency int,
 ) error {
 	if maxConcurrency <= 0 {
@@ -125,10 +124,10 @@ func (p *baseProcessor) processFilesConcurrently(
 		start   = time.Now()
 	)
 
-	totalFiles := len(p.syncFileModeMap)
+	totalFiles := len(p.params.Files)
 
 	// 提交任务到工作池
-	for path, opStr := range p.syncFileModeMap {
+	for path, content := range p.params.Files {
 		select {
 		case <-ctx.Done():
 			duration := time.Since(start)
@@ -138,7 +137,7 @@ func (p *baseProcessor) processFilesConcurrently(
 			wg.Add(1)
 			if err := pool.Submit(func() {
 				defer wg.Done()
-				if err := processFunc(path, types.FileOp(opStr)); err != nil {
+				if err := processFunc(path, content); err != nil {
 					mu.Lock()
 					runErrs = append(runErrs, err)
 					mu.Unlock()

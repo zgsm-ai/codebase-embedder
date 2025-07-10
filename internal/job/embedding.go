@@ -23,13 +23,11 @@ type embeddingProcessor struct {
 func NewEmbeddingProcessor(
 	svcCtx *svc.ServiceContext,
 	msg *IndexTaskParams,
-	syncFileModeMap map[string]string,
 ) (Processor, error) {
 	return &embeddingProcessor{
 		baseProcessor: baseProcessor{
-			svcCtx:          svcCtx,
-			params:          msg,
-			syncFileModeMap: syncFileModeMap,
+			svcCtx: svcCtx,
+			params: msg,
 		},
 	}, nil
 }
@@ -38,7 +36,6 @@ type fileProcessResult struct {
 	chunks []*types.CodeChunk
 	err    error
 	path   string
-	op     types.FileOp
 }
 
 func (t *embeddingProcessor) Process(ctx context.Context) error {
@@ -50,7 +47,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			return err
 		}
 
-		t.totalFileCnt = int32(len(t.syncFileModeMap))
+		t.totalFileCnt = int32(len(t.params.Files))
 		var (
 			addChunks       = make([]*types.CodeChunk, 0, t.totalFileCnt)
 			deleteFilePaths = make(map[string]struct{})
@@ -58,40 +55,28 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		)
 
 		// 处理单个文件的函数
-		processFile := func(path string, op types.FileOp) error {
+		processFile := func(path string, content []byte) error {
 			var result fileProcessResult
 			result.path = path
-			result.op = op
 
 			select {
 			case <-ctx.Done():
 				return errs.RunTimeout
 			default:
-				switch op {
-				case types.FileOpAdd, types.FileOpModify:
-					chunks, err := t.splitFile(ctx, &types.SyncFile{Path: path})
-					if err != nil {
-						if parser.IsNotSupportedFileError(err) {
-							atomic.AddInt32(&t.ignoreFileCnt, 1)
-							return nil
-						}
-						atomic.AddInt32(&t.failedFileCnt, 1)
-						return err
+				chunks, err := t.splitFile(ctx, &types.SourceFile{Path: path, Content: content})
+				if err != nil {
+					if parser.IsNotSupportedFileError(err) {
+						atomic.AddInt32(&t.ignoreFileCnt, 1)
+						return nil
 					}
-					mu.Lock()
-					addChunks = append(addChunks, chunks...)
-					mu.Unlock()
-					atomic.AddInt32(&t.successFileCnt, 1)
-
-				case types.FileOpDelete:
-					mu.Lock()
-					deleteFilePaths[path] = struct{}{}
-					mu.Unlock()
-					atomic.AddInt32(&t.successFileCnt, 1)
-
-				default:
-					return fmt.Errorf("embedding task unknown file op %s", op)
+					atomic.AddInt32(&t.failedFileCnt, 1)
+					return err
 				}
+				mu.Lock()
+				addChunks = append(addChunks, chunks...)
+				mu.Unlock()
+				atomic.AddInt32(&t.successFileCnt, 1)
+
 			}
 			return nil
 		}
@@ -159,17 +144,13 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 	return nil
 }
 
-func (t *embeddingProcessor) splitFile(ctx context.Context, syncFile *types.SyncFile) ([]*types.CodeChunk, error) {
-	file, err := t.svcCtx.CodebaseStore.Read(ctx, t.params.CodebasePath, syncFile.Path, types.ReadOptions{})
-	if err != nil {
-		return nil, err
-	}
+func (t *embeddingProcessor) splitFile(ctx context.Context, file *types.SourceFile) ([]*types.CodeChunk, error) {
 	// 切分文件
 	return t.svcCtx.CodeSplitter.Split(&types.SourceFile{
 		CodebaseId:   t.params.CodebaseID,
 		CodebasePath: t.params.CodebasePath,
 		CodebaseName: t.params.CodebaseName,
-		Path:         syncFile.Path,
-		Content:      file,
+		Path:         file.Path,
+		Content:      file.Content,
 	})
 }

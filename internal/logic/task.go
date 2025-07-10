@@ -1,11 +1,16 @@
 package logic
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -30,10 +35,9 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 	}
 }
 
-func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest) (resp *types.IndexTaskResponseData, err error) {
+func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (resp *types.IndexTaskResponseData, err error) {
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
-	indexType := req.IndexType
 
 	// 查找代码库记录
 	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
@@ -54,7 +58,8 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest) (resp *types.IndexTa
 
 	// 获取同步锁，避免重复处理
 	// 获取分布式锁， n分钟超时
-	lockKey := job.IndexJobKey(codebase.ID)
+	lockKey := fmt.Sprintf("codebase_embedder:task:%d", codebase.ID)
+
 	mux, locked, err := l.svcCtx.DistLock.TryLock(ctx, lockKey, l.svcCtx.Config.IndexTask.LockTimeout)
 	if err != nil || !locked {
 		return nil, fmt.Errorf("failed to acquire lock %s to sumit index task, err:%w", lockKey, err)
@@ -63,54 +68,84 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest) (resp *types.IndexTa
 
 	tracer.WithTrace(ctx).Infof("acquire lock %s successfully, start to submit index task.", lockKey)
 
-	// 元数据列表
-	var medataFiles *types.CollapseSyncMetaFile
-	if len(req.FileMap) > 0 {
-		tracer.WithTrace(ctx).Infof("index task submit with file map, len %d, use it.", len(req.FileMap))
-		medataFiles = &types.CollapseSyncMetaFile{
-			CodebasePath:  codebase.Path,
-			FileModelMap:  make(map[string]string),
-			MetaFilePaths: make([]string, 0),
+	// TODO 从body 中读取文件
+	// Parse multipart form
+	err = r.ParseMultipartForm(32 << 20) // 32MB max memory
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse multipart form: %w", err)
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	// Get the ZIP file from form
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file from form: %w", err)
+	}
+	defer file.Close()
+
+	// Verify file is a ZIP
+	if !strings.HasSuffix(header.Filename, ".zip") {
+		return nil, fmt.Errorf("uploaded file must be a ZIP file, got: %s", header.Filename)
+	}
+
+	// 补全代码：从ZIP文件读取所有文件内容
+	files := make(map[string][]byte)
+
+	// 创建临时文件存储上传的ZIP
+	tempFile, err := os.CreateTemp("", "upload-*.zip")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath) // 清理临时文件
+
+	// 将上传的ZIP内容复制到临时文件
+	_, err = io.Copy(tempFile, file)
+	tempFile.Close() // 关闭文件以便后续读取
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy file to temp location: %w", err)
+	}
+
+	// 打开ZIP文件进行读取
+	zipReader, err := zip.OpenReader(tempPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open ZIP file: %w", err)
+	}
+	defer zipReader.Close()
+
+	// 遍历ZIP中的所有文件
+	for _, zipFile := range zipReader.File {
+		// 跳过目录
+		if zipFile.FileInfo().IsDir() {
+			continue
 		}
-		for k, v := range req.FileMap {
-			medataFiles.FileModelMap[k] = v
-		}
-	} else {
-		tracer.WithTrace(ctx).Infof("index task submit without file map, find them from codebase store.")
-		medataFiles, err = l.svcCtx.CodebaseStore.GetSyncFileListCollapse(ctx, codebase.Path)
+
+		// 打开ZIP中的文件
+		fileReader, err := zipFile.Open()
 		if err != nil {
-			tracer.WithTrace(ctx).Errorf("failed to get sync file list err:%v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to open file %s in zip: %w", zipFile.Name, err)
 		}
 
-		if medataFiles == nil || len(medataFiles.FileModelMap) == 0 {
-			return nil, errors.New("sync file list is nil, cannot submit index task")
+		// 读取文件内容
+		content, err := io.ReadAll(fileReader)
+		fileReader.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %s in zip: %w", zipFile.Name, err)
 		}
+
+		// 存储文件内容到映射
+		files[zipFile.Name] = content
 	}
 
-	var enableEmbeddingBuild, enableCodeGraphBuild bool
-	switch indexType {
-	case string(types.Embedding):
-		enableEmbeddingBuild = true
-	case string(types.CodeGraph):
-		enableCodeGraphBuild = true
-	case string(types.All):
-		enableEmbeddingBuild = true
-		enableCodeGraphBuild = true
-	default:
-		return nil, fmt.Errorf("invalid index task type:%s", indexType)
-	}
 	task := &job.IndexTask{
 		SvcCtx:  l.svcCtx,
 		LockMux: mux,
 		Params: &job.IndexTaskParams{
-			SyncID:               latestSync.ID,
-			CodebaseID:           codebase.ID,
-			CodebasePath:         codebase.Path,
-			CodebaseName:         codebase.Name,
-			SyncMetaFiles:        medataFiles,
-			EnableEmbeddingBuild: enableEmbeddingBuild,
-			EnableCodeGraphBuild: enableCodeGraphBuild,
+			SyncID:       latestSync.ID,
+			CodebaseID:   codebase.ID,
+			CodebasePath: codebase.Path,
+			CodebaseName: codebase.Name,
+			Files:        files,
 		},
 	}
 

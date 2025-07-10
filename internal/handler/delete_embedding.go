@@ -10,16 +10,16 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
-func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
+func deleteIndexHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.IndexTaskRequest
+		var req types.DeleteIndexRequest
 		if err := httpx.Parse(r, &req); err != nil {
 			response.Error(w, err)
 			return
 		}
 
-		l := logic.NewTaskLogic(r.Context(), svcCtx)
-		resp, err := l.SubmitTask(&req)
+		l := logic.NewIndexLogic(r.Context(), svcCtx)
+		resp, err := l.DeleteIndex(&req)
 		if err != nil {
 			response.Error(w, err)
 		} else {

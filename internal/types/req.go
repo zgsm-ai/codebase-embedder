@@ -49,9 +49,6 @@ type RelationRequest struct {
 	MaxLayer       int    `form:"maxLayer,optional,default=1"` // 最大层级数（默认1）
 }
 
-type RelationResponseData struct {
-	List []*GraphNode `json:"list"` // 关系树列表
-}
 
 type SemanticFileItem struct {
 	Content  string  `json:"content"`  // 代码片段
@@ -78,14 +75,7 @@ type CodebaseTreeRequest struct {
 	IncludeFiles int    `form:"includeFiles,optional,default=1"`
 }
 
-type CodebaseTreeResponseData struct {
-	CodebaseId    int32       `json:"codebaseId"`
-	Name          string      `json:"name"`
-	RootPath      string      `json:"rootPath"`
-	TotalFiles    int         `json:"totalFiles"`
-	TotalSize     int64       `json:"totalSize"`
-	DirectoryTree []*TreeNode `json:"directoryTree"`
-}
+
 
 // ListOption 定义List方法的可选参数
 type ListOption func(*ListOptions)
@@ -114,12 +104,7 @@ type ReadOptions struct {
 	EndLine   int
 }
 
-type FileDefitnionItem struct {
-	Name     string   `json:"name"`     // 节点名字
-	ItemType string   `json:"type"`     // 节点类型（definition=定义，reference=引用）
-	Position Position `json:"position"` // 代码位置
-	Content  string   `json:"content"`  // 代码内容
-}
+
 
 type FileDefinitionParseRequest struct {
 	ClientId     string `form:"clientId"`     // 用户机器ID
@@ -127,17 +112,8 @@ type FileDefinitionParseRequest struct {
 	FilePath     string `form:"filePath"`     // 文件相对路径
 }
 
-type FileDefinitionResponseData struct {
-	List []*FileDefitnionItem `json:"list"` // 关系树列表
-}
 
-type DefinitionNode struct {
-	Name     string   `json:"name"`     // 节点名
-	Content  string   `json:"content"`  // 代码内容
-	NodeType string   `json:"type"`     // 节点类型
-	FilePath string   `json:"filePath"` // 文件相对路径
-	Position Position `json:"position"` // 代码位置
-}
+
 
 type DefinitionRequest struct {
 	ClientId     string `form:"clientId"`             // 用户机器ID
@@ -148,9 +124,6 @@ type DefinitionRequest struct {
 	CodeSnippet  string `form:"codeSnippet,optional"` // 代码片段
 }
 
-type DefinitionResponseData struct {
-	List []*DefinitionNode `json:"list"` // 关系树列表
-}
 
 type DeleteCodebaseRequest struct {
 	ClientId     string `form:"clientId"`     // 用户机器ID（如MAC地址）
@@ -163,7 +136,7 @@ type DeleteCodebaseResponseData struct {
 type DeleteIndexRequest struct {
 	ClientId     string `form:"clientId"`     // 用户机器ID（如MAC地址）
 	CodebasePath string `form:"codebasePath"` // 项目绝对路径
-	IndexType    string `form:"taskType,options=embedding|codegraph|all"`
+	FilePaths    string `form:"filePaths"`
 }
 
 type DeleteIndexResponseData struct {
@@ -197,8 +170,6 @@ type IndexSummaryResonseData struct {
 type IndexTaskRequest struct {
 	ClientId     string            `json:"clientId"`     // 用户机器ID（如MAC地址）
 	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
-	IndexType    string            `json:"indexType,options=embedding|codegraph|all"`
-	FileMap      map[string]string `json:"fileMap,optional"`
 }
 
 type IndexTaskResponseData struct {

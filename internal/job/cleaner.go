@@ -10,11 +10,10 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
-	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
 	"time"
 )
 
-const cleanLockKey = "codebase_indexer:lock:cleaner"
+const cleanLockKey = "codebase_embedder:lock:cleaner"
 const lockTimeout = time.Second * 120
 
 type Cleaner struct {
@@ -68,11 +67,7 @@ func NewCleaner(ctx context.Context, svcCtx *svc.ServiceContext) (Job, error) {
 		}
 		for _, cb := range codebases {
 			logx.Infof("start to clean codebase: %s", cb.Path)
-			// todo clean codebase
-			err = svcCtx.CodebaseStore.DeleteAll(ctx, cb.Path)
-			if err != nil {
-				logx.Errorf("cleaner drop codebase store %s error: %v", cb.Path, err)
-			}
+
 			// todo clean vector store
 			err = svcCtx.VectorStore.DeleteCodeChunks(ctx, []*types.CodeChunk{{CodebaseId: cb.ID}}, vector.Options{})
 			if err != nil {
@@ -86,10 +81,6 @@ func NewCleaner(ctx context.Context, svcCtx *svc.ServiceContext) (Job, error) {
 			//	logx.Errorf("drop codebase store %s error: %v", cb.FilePaths, err)
 			//	continue
 			//}
-			// 清理redis cache
-			if err = svcCtx.Cache.CleanExpiredVersions(ctx, utils.FormatInt(int64(cb.ID))); err != nil {
-				logx.Errorf("cleaner clean codebase store %s error: %v", cb.Path, err)
-			}
 
 			// todo update db status， 唯一索引的存在(client_id、codebasePath)，给client_id 加个唯一后缀，避免冲突。
 			cb.ClientID = cb.ClientID + "@" + uuid.New().String()
