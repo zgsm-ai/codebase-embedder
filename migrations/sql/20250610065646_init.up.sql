@@ -57,50 +57,6 @@ ALTER TABLE ONLY codebase
 CREATE UNIQUE INDEX idx_codebase_client_id_path ON codebase (client_id, client_path);
 
 
--- Synchronization history table
-CREATE TABLE sync_history
-(
-    id             integer     NOT NULL,
-    codebase_id    INT         NOT NULL,                   -- codebase.id
-    message        TEXT,
-    publish_status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, success, failed
-    publish_time   TIMESTAMP,
-    created_at     TIMESTAMP            DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP            DEFAULT CURRENT_TIMESTAMP
-);
-
-COMMENT
-    ON TABLE sync_history IS 'Records the synchronization history of projects';
-COMMENT
-    ON COLUMN sync_history.id IS 'Unique identifier for the synchronization history record';
-COMMENT
-    ON COLUMN sync_history.codebase_id IS 'ID of the associated project repository';
-COMMENT
-    ON COLUMN sync_history.message IS 'Content of the synchronization message';
-COMMENT
-    ON COLUMN sync_history.publish_status IS 'Publishing status: pending, success, failed';
-COMMENT
-    ON COLUMN sync_history.publish_time IS 'Time of publication';
-COMMENT
-    ON COLUMN sync_history.created_at IS 'Time when the record was created';
-COMMENT
-    ON COLUMN sync_history.updated_at IS 'Time when the record was last updated';
-
-CREATE SEQUENCE sync_history_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE CACHE 1;
-
-ALTER SEQUENCE sync_history_id_seq OWNED BY sync_history.id;
-ALTER TABLE ONLY sync_history
-    ALTER COLUMN id SET DEFAULT nextval('sync_history_id_seq'::regclass);
-ALTER TABLE ONLY sync_history
-    ADD CONSTRAINT sync_history_pkey PRIMARY KEY (id);
-
-CREATE INDEX idx_sync_history_codebase_id ON sync_history USING btree (codebase_id);
-CREATE INDEX idx_sync_history_publish_status ON sync_history USING btree (publish_status);
-
 -- Index building task history table
 CREATE TABLE index_history
 (

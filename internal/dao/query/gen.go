@@ -20,7 +20,6 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:           db,
 		Codebase:     newCodebase(db, opts...),
 		IndexHistory: newIndexHistory(db, opts...),
-		SyncHistory:  newSyncHistory(db, opts...),
 	}
 }
 
@@ -29,7 +28,6 @@ type Query struct {
 
 	Codebase     codebase
 	IndexHistory indexHistory
-	SyncHistory  syncHistory
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -39,7 +37,6 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:           db,
 		Codebase:     q.Codebase.clone(db),
 		IndexHistory: q.IndexHistory.clone(db),
-		SyncHistory:  q.SyncHistory.clone(db),
 	}
 }
 
@@ -56,21 +53,18 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:           db,
 		Codebase:     q.Codebase.replaceDB(db),
 		IndexHistory: q.IndexHistory.replaceDB(db),
-		SyncHistory:  q.SyncHistory.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
 	Codebase     *codebaseDo
 	IndexHistory *indexHistoryDo
-	SyncHistory  *syncHistoryDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		Codebase:     q.Codebase.WithContext(ctx),
 		IndexHistory: q.IndexHistory.WithContext(ctx),
-		SyncHistory:  q.SyncHistory.WithContext(ctx),
 	}
 }
 

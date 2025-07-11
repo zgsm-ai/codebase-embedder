@@ -56,7 +56,7 @@ services:
     networks:
       - shenma
 
-  codebase-indexer:
+  codebase-embedder:
     image: zgsm/codebase-embedder:latest
     command:
       - /app/server
