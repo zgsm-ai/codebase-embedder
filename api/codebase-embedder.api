@@ -1,5 +1,5 @@
 //  goctl api go --api codebase-indexer.api --style go_zero  --dir .
-// goctl api swagger --api codebase-indexer.api --dir docs --filename swagger
+// goctl api swagger --api codebase-embedder.api --dir docs --filename swagger
 //go get -u github.com/swaggo/files
 //go get -u github.com/swaggo/gin-swagger
 //package api

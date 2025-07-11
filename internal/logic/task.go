@@ -5,18 +5,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
+	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
+	"gorm.io/gorm"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
-	"github.com/zgsm-ai/codebase-indexer/internal/types"
-	"gorm.io/gorm"
-
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
+	"github.com/zgsm-ai/codebase-indexer/internal/types"
 
 	"github.com/zeromicro/go-zero/core/logx"
 )
@@ -38,12 +39,13 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (resp *types.IndexTaskResponseData, err error) {
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
+	codebaseName := req.CodebaseName
+	l.Logger.Debugf("SubmitTask request: %s, %s, %s", clientId, clientPath, codebaseName)
 
-	// 查找代码库记录
-	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NewRecordNotFoundErr(types.NameCodeBase, fmt.Sprintf("client_id: %s, clientPath: %s", clientId, clientPath))
-	}
+	userUid := utils.ParseJWTUserInfo(r, l.svcCtx.Config.Auth.UserInfoHeader)
+
+	// 查找代码库记录，不存在则初始化
+	codebase, err := l.initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName)
 	if err != nil {
 		return nil, err
 	}
@@ -162,4 +164,50 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	tracer.WithTrace(ctx).Infof("index task submit successfully.")
 
 	return &types.IndexTaskResponseData{}, nil
+}
+
+func (l *TaskLogic) initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName string) (*model.Codebase, error) {
+	var codebase *model.Codebase
+	var err error
+	// 判断数据库记录是否存在 ，状态为 active
+	codebase, err = l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if codebase == nil {
+		codebase, err = l.saveCodebase(clientId, clientPath, userUid, codebaseName)
+	}
+
+	return codebase, nil
+}
+
+/**
+ * @Description: 初始化 codebase
+ * @receiver l
+ * @param clientId
+ * @param clientPath
+ * @param r
+ * @param codebaseName
+ * @param metadata
+ * @return error
+ * @return bool
+ */
+func (l *TaskLogic) saveCodebase(clientId, clientPath, userUId, codebaseName string) (*model.Codebase, error) {
+	// 不存在则插入
+	// clientId + codebasepath 为联合唯一索引
+	// 保存到数据库
+	codebaseModel := &model.Codebase{
+		ClientID:   clientId,
+		UserID:     userUId,
+		Name:       codebaseName,
+		ClientPath: clientPath,
+		Status:     string(model.CodebaseStatusActive),
+		Path:       clientPath,
+	}
+	err := l.svcCtx.Querier.Codebase.WithContext(l.ctx).Save(codebaseModel)
+	if err != nil && !errors.Is(err, gorm.ErrDuplicatedKey) {
+		// 不是 唯一索引冲突
+		return nil, err
+	}
+	return codebaseModel, nil
 }

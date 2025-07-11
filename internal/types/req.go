@@ -156,7 +156,7 @@ type CodeGraphSummary struct {
 }
 
 type IndexSummaryRequest struct {
-	ClientId     string `form:"clientId"`     // 用户机器ID（如MAC地址）
+	ClientId     string `form:"clientId"`     // 客户端id
 	CodebasePath string `form:"codebasePath"` // 项目绝对路径
 }
 
@@ -168,8 +168,9 @@ type IndexSummaryResonseData struct {
 }
 
 type IndexTaskRequest struct {
-	ClientId     string            `json:"clientId"`     // 用户机器ID（如MAC地址）
+	ClientId     string            `json:"clientId"`     // 客户端id
 	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
+	CodebaseName string            `json:"codebaseName"` // 项目名
 }
 
 type IndexTaskResponseData struct {
