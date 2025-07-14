@@ -143,16 +143,10 @@ type DeleteIndexResponseData struct {
 }
 
 type EmbeddingSummary struct {
-	Status      string `json:"status"`
-	LastIndexAt string `json:"lastSyncAt"`
-	TotalFiles  int    `json:"totalFiles"`
+	Status     string `json:"status"`
+	UpdatedAt  string `json:"updatedAt"`
+	TotalFiles int    `json:"totalFiles"`
 	TotalChunks int    `json:"totalChunks"`
-}
-type CodeGraphSummary struct {
-	Status               string `json:"status"`
-	LastIndexAt          string `json:"lastSyncAt"`
-	TotalFiles           int    `json:"totalFiles"`
-	TotalDefinitionFiles int    `json:"-"`
 }
 
 type IndexSummaryRequest struct {
@@ -162,9 +156,7 @@ type IndexSummaryRequest struct {
 
 type IndexSummaryResonseData struct {
 	TotalFiles int
-	LastSyncAt string           `json:"lastSyncAt"`
 	Embedding  EmbeddingSummary `json:"embedding"`
-	CodeGraph  CodeGraphSummary `json:"codegraph"`
 }
 
 type IndexTaskRequest struct {

@@ -50,10 +50,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 	var (
 		wg                 sync.WaitGroup
 		embeddingSummary   *types.EmbeddingSummary
-		codegraphSummary   *types.CodeGraphSummary
 		embeddingIndexTask *model.IndexHistory
-		codegraphIndexTask *model.IndexHistory
-		lastSyncHistory    *model.SyncHistory
 	)
 
 	// 定义超时时间
@@ -94,40 +91,6 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 		}
 	}()
 
-	// 获取最新的codegraph索引任务（带超时控制）
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel() // 避免资源泄漏
-
-		var err error
-		codegraphIndexTask, err = l.svcCtx.Querier.IndexHistory.GetLatestTaskHistory(timeoutCtx, codebase.ID, types.TaskTypeCodegraph)
-		if err != nil {
-			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				tracer.WithTrace(timeoutCtx).Errorf("codegraph index task query timed out after %v", timeout)
-			} else {
-				tracer.WithTrace(timeoutCtx).Errorf("failed to get latest codegraph index task, err:%v", err)
-			}
-		}
-	}()
-	// 获取最新的同步历史
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel() // 避免资源泄漏
-		var err error
-		lastSyncHistory, err = l.svcCtx.Querier.SyncHistory.FindLatest(timeoutCtx, codebase.ID)
-		if err != nil {
-			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				tracer.WithTrace(timeoutCtx).Errorf("codegraph index task query timed out after %v", timeout)
-			} else {
-				tracer.WithTrace(timeoutCtx).Errorf("failed to get latest sync history, err:%v", err)
-			}
-		}
-	}()
-
 	// 等待所有协程完成
 	wg.Wait()
 
@@ -136,34 +99,18 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 		Embedding: types.EmbeddingSummary{
 			Status: types.TaskStatusPending,
 		},
-		CodeGraph: types.CodeGraphSummary{
-			Status: types.TaskStatusPending,
-		},
 	}
 
 	if embeddingIndexTask != nil {
 		resp.Embedding.Status = convertStatus(embeddingIndexTask.Status)
-		resp.Embedding.LastIndexAt = embeddingIndexTask.UpdatedAt.Format("2006-01-02 15:04:05")
+		resp.Embedding.UpdatedAt = embeddingIndexTask.UpdatedAt.Format("2006-01-02 15:04:05")
 	} else if embeddingSummary.TotalChunks > 0 {
 		resp.Embedding.Status = types.TaskStatusSuccess
-	}
-
-	if codegraphIndexTask != nil {
-		resp.CodeGraph.Status = convertStatus(codegraphIndexTask.Status)
-		resp.CodeGraph.LastIndexAt = codegraphIndexTask.UpdatedAt.Format("2006-01-02 15:04:05")
-	} else if codegraphSummary.TotalFiles > 0 {
-		resp.CodeGraph.Status = types.TaskStatusSuccess
-	}
-	if lastSyncHistory != nil {
-		resp.LastSyncAt = lastSyncHistory.UpdatedAt.Format("2006-01-02 15:04:05")
 	}
 
 	if embeddingSummary != nil {
 		resp.Embedding.TotalChunks = embeddingSummary.TotalChunks
 		resp.Embedding.TotalFiles = embeddingSummary.TotalFiles
-	}
-	if codegraphSummary != nil {
-		resp.CodeGraph.TotalFiles = codegraphSummary.TotalFiles
 	}
 
 	return resp, nil

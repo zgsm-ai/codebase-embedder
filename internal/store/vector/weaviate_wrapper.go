@@ -292,7 +292,9 @@ func (r *weaviateWrapper) UpsertCodeChunks(ctx context.Context, docs []*types.Co
 		return nil
 	}
 	// TODO 事务保障
-	// 先删除已有的相同codebaseId和FilePath的数据，避免重复  TODO 启动一个定时任务，清理重复数据。根据CodebaseId、FilePaths、Content 去重。
+	// 先删除已有的相同codebaseId和FilePath的数据，避免重复
+	//TODO 启动一个定时任务，清理重复数据。根据CodebaseId、FilePaths、Content 去重。
+	// TODO 区分添加、修改、删除场景， 只有修改/删除需要先delete，添加不用。
 	err := r.DeleteCodeChunks(ctx, docs, options)
 	if err != nil {
 		tracer.WithTrace(ctx).Errorf("[%s]failed to delete existing code chunks before upsert: %v", docs[0].CodebasePath, err)
