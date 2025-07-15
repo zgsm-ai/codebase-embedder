@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zgsm-ai/codebase-indexer/internal/errs"
+	// "github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 
@@ -49,13 +49,13 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	if err != nil {
 		return nil, err
 	}
-
+	
 	// 创建索引任务
 	// 查询最新的同步
-	latestSync, err := l.svcCtx.Querier.SyncHistory.FindLatest(l.ctx, codebase.ID)
-	if err != nil {
-		return nil, errs.NewRecordNotFoundErr(types.NameSyncHistory, fmt.Sprintf("codebase_id: %d", codebase.ID))
-	}
+	// latestSync, err := l.svcCtx.Querier.SyncHistory.FindLatest(l.ctx, codebase.ID)
+	// if err != nil {
+	// 	return nil, errs.NewRecordNotFoundErr(types.NameSyncHistory, fmt.Sprintf("codebase_id: %d", codebase.ID))
+	// }
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
 	// 获取同步锁，避免重复处理
@@ -143,7 +143,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		SvcCtx:  l.svcCtx,
 		LockMux: mux,
 		Params: &job.IndexTaskParams{
-			SyncID:       latestSync.ID,
+			// SyncID:       latestSync.ID,
 			CodebaseID:   codebase.ID,
 			CodebasePath: codebase.Path,
 			CodebaseName: codebase.Name,

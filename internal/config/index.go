@@ -3,7 +3,7 @@ package config
 import "time"
 
 type IndexTaskConf struct {
-	Topic             string
+	// Topic             string
 	ConsumerGroup     string `json:",default=codebase_embedder"` // 消费者组名称（用于Streams）
 	PoolSize          int
 	QueueSize         int
