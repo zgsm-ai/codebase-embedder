@@ -44,6 +44,12 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *
 	if utils.IsBlank(req.Query) {
 		return nil, errs.NewInvalidParamErr(paramQuery, req.Query)
 	}
+
+	// 预处理查询字符串
+	req.Query, err = l.preprocessQuery(req.Query)
+	if err != nil {
+		return nil, err
+	}
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
 
@@ -62,4 +68,11 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *
 	return &types.SemanticSearchResponseData{
 		List: documents,
 	}, nil
+}
+
+// preprocessQuery 执行自定义查询预处理逻辑
+func (l *SemanticLogic) preprocessQuery(query string) (string, error) {
+	// TODO: 实现自定义预处理逻辑
+	// 例如: 去除特殊字符、敏感词过滤等
+	return query, nil
 }
