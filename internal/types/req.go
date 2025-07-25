@@ -57,10 +57,11 @@ type SemanticFileItem struct {
 }
 
 type SemanticSearchRequest struct {
-	ClientId     string `json:"clientId"`                 // 用户机器ID（如MAC地址）
-	CodebasePath string `json:"codebasePath"`             // 项目绝对路径
-	Query        string `json:"query"`                    // 查询内容
-	TopK         int    `json:"topK,optional,default=10"` // 结果返回数量（默认10）
+	ClientId     string  `json:"clientId"`                 // 用户机器ID（如MAC地址）
+	CodebasePath string  `json:"codebasePath"`             // 项目绝对路径
+	Query        string  `json:"query"`                    // 查询内容
+	TopK         int     `json:"topK,optional,default=10"` // 结果返回数量（默认10）
+	ScoreThreshold float32 `json:"scoreThreshold,optional,default=0.3"` // 分数阈值，默认0.3
 }
 
 type SemanticSearchResponseData struct {

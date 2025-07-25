@@ -65,8 +65,18 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *
 	if err != nil {
 		return nil, err
 	}
+
+	// 分数过滤
+	scoreThreshold := req.ScoreThreshold
+	filteredDocuments := make([]*types.SemanticFileItem, 0, len(documents))
+	for _, doc := range documents {
+		if doc.Score >= scoreThreshold {
+			filteredDocuments = append(filteredDocuments, doc)
+		}
+	}
+
 	return &types.SemanticSearchResponseData{
-		List: documents,
+		List: filteredDocuments,
 	}, nil
 }
 
