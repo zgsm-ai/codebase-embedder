@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"github.com/zgsm-ai/codebase-indexer/internal/response"
-	"net/http"
 	"errors"
-	// "github.com/zeromicro/go-zero/rest/httpx"
+	"fmt"
+	"net/http"
+
 	"github.com/zgsm-ai/codebase-indexer/internal/logic"
+	"github.com/zgsm-ai/codebase-indexer/internal/response"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
@@ -44,6 +45,21 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		req.ClientId = r.FormValue("clientId")
 		req.CodebasePath = r.FormValue("codebasePath")
 		req.CodebaseName = r.FormValue("codebaseName")
+		req.UploadToken = r.FormValue("uploadToken")
+		req.ExtraMetadata = r.FormValue("extraMetadata")
+		
+		// 解析可选的整数字段
+		if chunkNum := r.FormValue("chunkNumber"); chunkNum != "" {
+			fmt.Sscanf(chunkNum, "%d", &req.ChunkNumber)
+		}
+		if totalChunks := r.FormValue("totalChunks"); totalChunks != "" {
+			fmt.Sscanf(totalChunks, "%d", &req.TotalChunks)
+		}
+		if fileTotals := r.FormValue("fileTotals"); fileTotals != "" {
+			fmt.Sscanf(fileTotals, "%d", &req.FileTotals)
+		} else {
+			req.FileTotals = 1 // 默认值
+		}
 
 		// 验证必填字段
 		if req.ClientId == "" {
@@ -56,6 +72,10 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		}
 		if req.CodebaseName == "" {
 			response.Error(w, errors.New("missing required parameter: codebaseName"))
+			return
+		}
+		if req.UploadToken == "" {
+			response.Error(w, errors.New("missing required parameter: uploadToken"))
 			return
 		}
 

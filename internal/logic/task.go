@@ -40,7 +40,16 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
 	codebaseName := req.CodebaseName
-	l.Logger.Debugf("SubmitTask request: %s, %s, %s", clientId, clientPath, codebaseName)
+	uploadToken := req.UploadToken
+	
+	l.Logger.Debugf("SubmitTask request: %s, %s, %s, uploadToken: %s", clientId, clientPath, codebaseName, uploadToken)
+
+	// TODO: 验证uploadToken的有效性
+	// 当前调试阶段，万能令牌"xxxx"直接通过
+	if uploadToken != "xxxx" {
+		// 这里可以添加真实的token验证逻辑
+		// l.Logger.Warnf("Invalid upload token: %s", uploadToken)
+	}
 
 	userUid := utils.ParseJWTUserInfo(r, l.svcCtx.Config.Auth.UserInfoHeader)
 

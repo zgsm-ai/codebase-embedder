@@ -164,6 +164,11 @@ type IndexTaskRequest struct {
 	ClientId     string            `json:"clientId"`     // 客户端id
 	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
 	CodebaseName string            `json:"codebaseName"` // 项目名
+	UploadToken  string            `json:"uploadToken"`  // 上传令牌
+	ExtraMetadata string           `json:"extraMetadata,optional"` // 额外元数据
+	ChunkNumber   int              `json:"chunkNumber,optional"`   // 当前分片
+	TotalChunks   int              `json:"totalChunks,optional"`   // 分片总数
+	FileTotals    int              `json:"fileTotals"`             // 上传工程文件总数
 }
 
 type IndexTaskResponseData struct {
