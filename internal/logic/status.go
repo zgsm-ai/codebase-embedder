@@ -2,25 +2,46 @@ package logic
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/query"
+	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
 // StatusLogic 文件状态查询逻辑
 type StatusLogic struct {
-	ctx context.Context
+	ctx    context.Context
+	svcCtx *svc.ServiceContext
 }
 
 // NewStatusLogic 创建文件状态查询逻辑
-func NewStatusLogic(ctx context.Context) *StatusLogic {
-	return &StatusLogic{ctx: ctx}
+func NewStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *StatusLogic {
+	return &StatusLogic{
+		ctx:    ctx,
+		svcCtx: svcCtx,
+	}
 }
 
 // GetFileStatus 获取文件处理状态
 func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileStatusResponseData, error) {
-	// 查询索引历史记录
+	// 首先从Redis获取状态
+	statusManager := l.svcCtx.StatusManager
+	redisStatus, err := statusManager.GetFileStatus(l.ctx, req.ClientId, req.CodebasePath, req.CodebaseName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get status from redis: %w", err)
+	}
+	
+	// 如果Redis中有状态，直接返回
+	if redisStatus != nil {
+		// 更新分片信息
+		redisStatus.ChunkNumber = req.ChunkNumber
+		redisStatus.TotalChunks = req.TotalChunks
+		return redisStatus, nil
+	}
+	
+	// Redis中没有状态，从数据库查询
 	q := query.Use(nil) // 使用默认查询实例
 	indexHistory := q.IndexHistory
 	history, err := indexHistory.WithContext(l.ctx).
@@ -66,7 +87,7 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 	
 	progress := l.calculateProgress(status, int(processedFiles), int(totalFiles))
 	
-	return &types.FileStatusResponseData{
+	response := &types.FileStatusResponseData{
 		Status:      status,
 		Progress:    progress,
 		TotalFiles:  int(totalFiles),
@@ -77,7 +98,12 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 		TaskId:      int(history.ID),
 		ChunkNumber: req.ChunkNumber,
 		TotalChunks: req.TotalChunks,
-	}, nil
+	}
+	
+	// 将状态缓存到Redis
+	_ = statusManager.SetFileStatus(l.ctx, req.ClientId, req.CodebasePath, req.CodebaseName, response)
+	
+	return response, nil
 }
 
 // convertStatus 转换数据库状态为API状态

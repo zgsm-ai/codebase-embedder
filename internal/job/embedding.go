@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/zgsm-ai/codebase-indexer/internal/parser"
-	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
+	"github.com/zgsm-ai/codebase-indexer/internal/parser"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
+	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
@@ -54,6 +54,14 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			mu              sync.Mutex // 保护 addChunks
 		)
 
+		// 更新Redis中的处理状态为"processing"
+		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+			func(status *types.FileStatusResponseData) {
+				status.Status = "processing"
+				status.Message = "处理中"
+				status.TotalFiles = int(t.totalFileCnt)
+			})
+
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
 			var result fileProcessResult
@@ -70,12 +78,28 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 						return nil
 					}
 					atomic.AddInt32(&t.failedFileCnt, 1)
+					
+					// 更新Redis中的失败状态
+					_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+						func(status *types.FileStatusResponseData) {
+							status.Failed = int(atomic.LoadInt32(&t.failedFileCnt))
+							status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
+							status.Progress = int(float64(status.Processed) / float64(status.TotalFiles) * 100)
+						})
+					
 					return err
 				}
 				mu.Lock()
 				addChunks = append(addChunks, chunks...)
 				mu.Unlock()
 				atomic.AddInt32(&t.successFileCnt, 1)
+
+				// 更新Redis中的成功状态
+				_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+					func(status *types.FileStatusResponseData) {
+						status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
+						status.Progress = int(float64(status.Processed) / float64(status.TotalFiles) * 100)
+					})
 
 			}
 			return nil
@@ -132,6 +156,25 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		if err := t.updateTaskSuccess(ctx); err != nil {
 			tracer.WithTrace(ctx).Errorf("embedding task update status success error:%v", err)
 		}
+
+		// 更新Redis中的最终状态
+		finalStatus := "completed"
+		if t.failedFileCnt > 0 {
+			finalStatus = "failed"
+		}
+		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+			func(status *types.FileStatusResponseData) {
+				status.Status = finalStatus
+				status.Progress = 100
+				status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
+				status.Failed = int(atomic.LoadInt32(&t.failedFileCnt))
+				if finalStatus == "completed" {
+					status.Message = "处理完成"
+				} else {
+					status.Message = "处理失败"
+				}
+			})
+
 		return nil
 	}(t)
 

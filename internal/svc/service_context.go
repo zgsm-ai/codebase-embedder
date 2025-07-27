@@ -22,6 +22,7 @@ type ServiceContext struct {
 	Embedder      vector.Embedder
 	VectorStore   vector.Store
 	CodeSplitter  *embedding.CodeSplitter
+	StatusManager *redisstore.StatusManager
 	redisClient   *redis.Client // 保存Redis客户端引用以便关闭
 	serverContext context.Context
 	TaskPool      *ants.Pool
@@ -113,6 +114,7 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	svcCtx.Embedder = embedder
 	svcCtx.CodeSplitter = splitter
 	svcCtx.DistLock = lock
+	svcCtx.StatusManager = redisstore.NewStatusManager(client)
 
 	return svcCtx, err
 }

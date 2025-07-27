@@ -2,11 +2,11 @@ package types
 
 // FileStatusRequest 文件状态查询请求
 type FileStatusRequest struct {
-	ClientId     string `form:"clientId"`                        // 客户ID，machineID
-	CodebasePath string `form:"codebasePath"`                    // 项目绝对路径（按照操作系统格式）
-	CodebaseName string `form:"codebaseName"`                    // 项目名称
-	ChunkNumber  int    `form:"chunkNumber,optional,default=0"`  // 当前分片
-	TotalChunks  int    `form:"totalChunks,optional,default=1"`  // 分片总数，当代码过大时候采用分片上传（默认为1）
+	ClientId     string `json:"clientId"`                        // 客户ID，machineID
+	CodebasePath string `json:"codebasePath"`                    // 项目绝对路径（按照操作系统格式）
+	CodebaseName string `json:"codebaseName"`                    // 项目名称
+	ChunkNumber  int    `json:"chunkNumber,optional,default=0"`  // 当前分片
+	TotalChunks  int    `json:"totalChunks,optional,default=1"`  // 分片总数，当代码过大时候采用分片上传（默认为1）
 }
 
 // FileStatusResponseData 文件状态查询响应数据

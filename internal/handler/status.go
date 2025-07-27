@@ -33,7 +33,7 @@ func (h *statusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 查询文件处理状态
-	statusLogic := logic.NewStatusLogic(r.Context())
+	statusLogic := logic.NewStatusLogic(r.Context(), h.svcCtx)
 	statusResp, err := statusLogic.GetFileStatus(&req)
 	if err != nil {
 		response.Error(w, err)

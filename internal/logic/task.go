@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
+	"github.com/zgsm-ai/codebase-indexer/internal/types"
 	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
 	"gorm.io/gorm"
 	"io"
@@ -15,10 +18,7 @@ import (
 	"os"
 	"strings"
 
-	// "github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
-	"github.com/zgsm-ai/codebase-indexer/internal/types"
-
 	"github.com/zeromicro/go-zero/core/logx"
 )
 
@@ -172,7 +172,27 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	}
 	tracer.WithTrace(ctx).Infof("index task submit successfully.")
 
-	return &types.IndexTaskResponseData{}, nil
+// 初始化Redis中的文件处理状态
+initialStatus := &types.FileStatusResponseData{
+	Status:      "pending",
+	Progress:    0,
+	TotalFiles:  req.FileTotals,
+	Processed:   0,
+	Failed:      0,
+	Message:     "等待处理",
+	UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
+	TaskId:      int(codebase.ID),
+	ChunkNumber: req.ChunkNumber,
+	TotalChunks: req.TotalChunks,
+}
+
+err = l.svcCtx.StatusManager.SetFileStatus(ctx, req.ClientId, req.CodebasePath, req.CodebaseName, initialStatus)
+if err != nil {
+	l.Logger.Errorf("failed to set initial file status in redis: %v", err)
+	// 不返回错误，继续处理
+}
+
+return &types.IndexTaskResponseData{TaskId: int(codebase.ID)}, nil
 }
 
 func (l *TaskLogic) initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName string) (*model.Codebase, error) {

@@ -21,6 +21,7 @@ type IndexTaskParams struct {
 	CodebaseID   int32  // 代码库ID
 	CodebasePath string // 代码库路径
 	CodebaseName string // 代码库名字
+	ClientId     string // 客户端ID
 	Files        map[string][]byte
 }
 
