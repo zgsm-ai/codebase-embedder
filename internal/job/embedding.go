@@ -182,8 +182,8 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		return fmt.Errorf("embedding task failed to update status, err:%v", err)
 	}
 
-	tracer.WithTrace(ctx).Infof("embedding task end successfully, cost: %d ms, total: %d, success: %d, failed: %d,params:%+v",
-		time.Since(start).Milliseconds(), t.totalFileCnt, t.successFileCnt, t.failedFileCnt, t.params)
+	tracer.WithTrace(ctx).Infof("embedding task end successfully, cost: %d ms, total: %d, success: %d, failed: %d",
+		time.Since(start).Milliseconds(), t.totalFileCnt, t.successFileCnt, t.failedFileCnt)
 	return nil
 }
 

@@ -125,11 +125,13 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	defer zipReader.Close()
 
 	// 遍历ZIP中的所有文件
+	fileCount := 0
 	for _, zipFile := range zipReader.File {
 		// 跳过目录
 		if zipFile.FileInfo().IsDir() {
 			continue
 		}
+		fileCount++
 
 		// 打开ZIP中的文件
 		fileReader, err := zipFile.Open()
@@ -147,6 +149,16 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		// 存储文件内容到映射
 		files[zipFile.Name] = content
 	}
+
+	// 更新codebase的file_count和total_size字段
+	codebase.FileCount = int32(fileCount)
+	codebase.TotalSize = int64(req.FileTotals)
+	err = l.svcCtx.Querier.Codebase.WithContext(l.ctx).Save(codebase)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update codebase file count: %w", err)
+	}
+	
+	l.Logger.Infof("Updated codebase %d with file_count: %d, total_size: %d", codebase.ID, fileCount, req.FileTotals)
 
 	task := &job.IndexTask{
 		SvcCtx:  l.svcCtx,
