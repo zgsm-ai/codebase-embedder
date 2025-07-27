@@ -8,6 +8,7 @@ require (
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/go-redsync/redsync/v4 v4.13.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0
@@ -34,6 +35,7 @@ require (
 	github.com/weaviate/weaviate v1.30.0
 	github.com/weaviate/weaviate-go-client/v5 v5.2.0
 	github.com/zeromicro/go-zero v1.8.3
+	go.uber.org/mock v0.5.0
 	golang.org/x/tools v0.34.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gen v0.3.27
@@ -96,6 +98,7 @@ require (
 	github.com/redis/rueidis v1.0.60 // indirect
 	github.com/redis/rueidis/rueidiscompat v1.0.60 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	go.mongodb.org/mongo-driver v1.17.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.36.0 // indirect

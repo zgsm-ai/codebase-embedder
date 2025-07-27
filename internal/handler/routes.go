@@ -49,6 +49,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/api/v1/files/upload",
 				Handler: taskHandler(serverCtx),
 			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/api/v1/files/status",
+				Handler: StatusHandler(serverCtx),
+			},
 		},
 		rest.WithPrefix("/codebase-embedder"),
 	)

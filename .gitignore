@@ -29,5 +29,3 @@ main.exe
 *.scip
 bin/*
 .roo
-doc
-docs
