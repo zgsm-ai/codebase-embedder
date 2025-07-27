@@ -174,3 +174,15 @@ type IndexTaskRequest struct {
 type IndexTaskResponseData struct {
 	TaskId int `json:"taskId"`
 }
+
+type TokenRequest struct {
+	ClientId     string `json:"clientId"`     // 客户端唯一标识
+	CodebasePath string `json:"codebasePath"` // 项目绝对路径
+	CodebaseName string `json:"codebaseName"` // 项目名称
+}
+
+type TokenResponseData struct {
+	Token     string `json:"token"`     // JWT令牌
+	ExpiresIn int    `json:"expiresIn"` // 有效期(秒)
+	TokenType string `json:"tokenType"` // 令牌类型
+}

@@ -41,6 +41,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 			{
 				Method:  http.MethodPost,
+				Path:    "/api/v1/files/token",
+				Handler: TokenHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
 				Path:    "/api/v1/files/upload",
 				Handler: taskHandler(serverCtx),
 			},
