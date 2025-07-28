@@ -27,7 +27,7 @@ type IndexTaskParams struct {
 
 func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool) {
 	start := time.Now()
-	tracer.WithTrace(ctx).Infof("index task started, task params:%+v", i.Params)
+	tracer.WithTrace(ctx).Infof("index task started")
 
 	// 解锁
 	defer func() {

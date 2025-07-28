@@ -141,13 +141,22 @@ POST /codebase-embedder/api/v1/files/status
 ```json
 HTTP/1.1 200 OK
 {
-  "status": "completed",
-  "progress": 100,
-  "totalFiles": 42,
-  "processed": 42,
-  "failed": 0,
-  "message": "Embedding completed",
-  "updatedAt": "2025-07-28T12:00:00Z"
+    "code": 0,
+    "message": "ok",
+    "data": {
+        "process":"processing",// 整体提取状态（如：pending/processing/complete/failed）
+        "totalProgress": 50, // 当前分片整体提取进度（百分比，0-100）
+        "fileList": [
+            {
+             "path": "src/main/java/main.java",
+             "status": "complete" // 单个文件状态（如：pending/processing/complete/failed）
+            },
+            {
+             "path": "src/main/java/server.java",
+             "status": "complete" // 单个文件状态（如：pending/processing/complete/failed）
+            }
+       ]
+    }
 }
 ```
 

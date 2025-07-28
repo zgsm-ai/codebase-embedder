@@ -165,6 +165,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		LockMux: mux,
 		Params: &job.IndexTaskParams{
 			// SyncID:       latestSync.ID,
+			ClientId: clientId,
 			CodebaseID:   codebase.ID,
 			CodebasePath: codebase.Path,
 			CodebaseName: codebase.Name,
@@ -184,27 +185,27 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	}
 	tracer.WithTrace(ctx).Infof("index task submit successfully.")
 
-// 初始化Redis中的文件处理状态
-initialStatus := &types.FileStatusResponseData{
-	Status:      "pending",
-	Progress:    0,
-	TotalFiles:  req.FileTotals,
-	Processed:   0,
-	Failed:      0,
-	Message:     "等待处理",
-	UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-	TaskId:      int(codebase.ID),
-	ChunkNumber: req.ChunkNumber,
-	TotalChunks: req.TotalChunks,
-}
+	// 初始化Redis中的文件处理状态
+	initialStatus := &types.FileStatusResponseData{
+		Status:      "pending",
+		Progress:    0,
+		TotalFiles:  req.FileTotals,
+		Processed:   0,
+		Failed:      0,
+		Message:     "等待处理",
+		UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
+		TaskId:      int(codebase.ID),
+		ChunkNumber: req.ChunkNumber,
+		TotalChunks: req.TotalChunks,
+	}
 
-err = l.svcCtx.StatusManager.SetFileStatus(ctx, req.ClientId, req.CodebasePath, req.CodebaseName, initialStatus)
-if err != nil {
-	l.Logger.Errorf("failed to set initial file status in redis: %v", err)
-	// 不返回错误，继续处理
-}
+	err = l.svcCtx.StatusManager.SetFileStatus(ctx, req.ClientId, req.CodebasePath, req.CodebaseName, initialStatus)
+	if err != nil {
+		l.Logger.Errorf("failed to set initial file status in redis: %v", err)
+		// 不返回错误，继续处理
+	}
 
-return &types.IndexTaskResponseData{TaskId: int(codebase.ID)}, nil
+	return &types.IndexTaskResponseData{TaskId: int(codebase.ID)}, nil
 }
 
 func (l *TaskLogic) initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName string) (*model.Codebase, error) {

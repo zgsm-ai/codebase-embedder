@@ -71,6 +71,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			case <-ctx.Done():
 				return errs.RunTimeout
 			default:
+				tracer.WithTrace(ctx).Infof("execute embedding task, path: %s", path)
 				chunks, err := t.splitFile(ctx, &types.SourceFile{Path: path, Content: content})
 				if err != nil {
 					if parser.IsNotSupportedFileError(err) {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
+	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/redis/go-redis/v9"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
@@ -32,7 +32,7 @@ func NewStatusManager(client *redis.Client) *StatusManager {
 // SetFileStatus 设置文件处理状态到Redis
 func (sm *StatusManager) SetFileStatus(ctx context.Context, clientID, codebasePath, codebaseName string, status *types.FileStatusResponseData) error {
 	key := sm.generateKey(clientID, codebasePath, codebaseName)
-	
+	logx.Infof("SetFileStatus Key: %s", key)
 	// 序列化状态数据
 	data, err := json.Marshal(status)
 	if err != nil {
@@ -51,7 +51,7 @@ func (sm *StatusManager) SetFileStatus(ctx context.Context, clientID, codebasePa
 // GetFileStatus 从Redis获取文件处理状态
 func (sm *StatusManager) GetFileStatus(ctx context.Context, clientID, codebasePath, codebaseName string) (*types.FileStatusResponseData, error) {
 	key := sm.generateKey(clientID, codebasePath, codebaseName)
-	
+	logx.Infof("GetFileStatus Key: %s", key)
 	// 从Redis获取数据
 	data, err := sm.client.Get(ctx, key).Result()
 	if err != nil {
