@@ -3,7 +3,6 @@ package logic
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/query"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
@@ -36,8 +35,9 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 	// 如果Redis中有状态，直接返回
 	if redisStatus != nil {
 		// 更新分片信息
-		redisStatus.ChunkNumber = req.ChunkNumber
-		redisStatus.TotalChunks = req.TotalChunks
+		redisStatus.FileList = []types.FileStatusItem{
+			{Path: req.CodebasePath, Status: redisStatus.Process},
+		}
 		return redisStatus, nil
 	}
 	
@@ -53,16 +53,11 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 	if err != nil {
 		// 如果没有找到记录，返回初始状态
 		return &types.FileStatusResponseData{
-			Status:      "pending",
-			Progress:    0,
-			TotalFiles:  0,
-			Processed:   0,
-			Failed:      0,
-			Message:     "等待处理",
-			UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-			TaskId:      0,
-			ChunkNumber: req.ChunkNumber,
-			TotalChunks: req.TotalChunks,
+			Process:      "pending",
+			TotalProgress: 0,
+			FileList: []types.FileStatusItem{
+				{Path: req.CodebasePath, Status: "pending"},
+			},
 		}, nil
 	}
 
@@ -80,24 +75,14 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 		processedFiles = *history.TotalSuccessCount
 	}
 	
-	failedFiles := int32(0)
-	if history.TotalFailCount != nil {
-		failedFiles = *history.TotalFailCount
-	}
-	
 	progress := l.calculateProgress(status, int(processedFiles), int(totalFiles))
 	
 	response := &types.FileStatusResponseData{
-		Status:      status,
-		Progress:    progress,
-		TotalFiles:  int(totalFiles),
-		Processed:   int(processedFiles),
-		Failed:      int(failedFiles),
-		Message:     l.getStatusMessage(status),
-		UpdatedAt:   history.UpdatedAt.Format("2006-01-02 15:04:05"),
-		TaskId:      int(history.ID),
-		ChunkNumber: req.ChunkNumber,
-		TotalChunks: req.TotalChunks,
+		Process:      status,
+		TotalProgress: progress,
+		FileList: []types.FileStatusItem{
+			{Path: req.CodebasePath, Status: status},
+		},
 	}
 	
 	// 将状态缓存到Redis

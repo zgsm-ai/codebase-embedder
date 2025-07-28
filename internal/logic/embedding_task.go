@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
@@ -187,16 +186,9 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 	// 初始化Redis中的文件处理状态
 	initialStatus := &types.FileStatusResponseData{
-		Status:      "pending",
-		Progress:    0,
-		TotalFiles:  req.FileTotals,
-		Processed:   0,
-		Failed:      0,
-		Message:     "等待处理",
-		UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-		TaskId:      int(codebase.ID),
-		ChunkNumber: req.ChunkNumber,
-		TotalChunks: req.TotalChunks,
+		Process:      "pending",
+		TotalProgress: 0,
+		FileList:     []types.FileStatusItem{},
 	}
 
 	err = l.svcCtx.StatusManager.SetFileStatus(ctx, req.ClientId, req.CodebasePath, req.CodebaseName, initialStatus)

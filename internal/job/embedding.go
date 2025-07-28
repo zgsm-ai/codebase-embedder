@@ -55,11 +55,11 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		)
 
 		// 更新Redis中的处理状态为"processing"
+		// 使用代码库路径作为处理中的路径标识
 		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
 			func(status *types.FileStatusResponseData) {
-				status.Status = "processing"
-				status.Message = "处理中"
-				status.TotalFiles = int(t.totalFileCnt)
+				status.Process = "processing"
+				status.TotalProgress = 0
 			})
 
 		// 处理单个文件的函数
@@ -80,12 +80,15 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 					}
 					atomic.AddInt32(&t.failedFileCnt, 1)
 					
-					// 更新Redis中的失败状态
-					_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+					// 更新Redis中的失败状态，使用当前处理的文件路径
+					_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, path, t.params.CodebaseName,
 						func(status *types.FileStatusResponseData) {
-							status.Failed = int(atomic.LoadInt32(&t.failedFileCnt))
-							status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
-							status.Progress = int(float64(status.Processed) / float64(status.TotalFiles) * 100)
+							processed := int(atomic.LoadInt32(&t.successFileCnt))
+							failed := int(atomic.LoadInt32(&t.failedFileCnt))
+							total := int(t.totalFileCnt)
+							if total > 0 {
+								status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
+							}
 						})
 					
 					return err
@@ -95,11 +98,15 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				mu.Unlock()
 				atomic.AddInt32(&t.successFileCnt, 1)
 
-				// 更新Redis中的成功状态
-				_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+				// 更新Redis中的成功状态，使用当前处理的文件路径
+				_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, path, t.params.CodebaseName,
 					func(status *types.FileStatusResponseData) {
-						status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
-						status.Progress = int(float64(status.Processed) / float64(status.TotalFiles) * 100)
+						processed := int(atomic.LoadInt32(&t.successFileCnt))
+						failed := int(atomic.LoadInt32(&t.failedFileCnt))
+						total := int(t.totalFileCnt)
+						if total > 0 {
+							status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
+						}
 					})
 
 			}
@@ -163,17 +170,11 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		if t.failedFileCnt > 0 {
 			finalStatus = "failed"
 		}
+		// 使用代码库路径作为最终状态的路径标识
 		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
 			func(status *types.FileStatusResponseData) {
-				status.Status = finalStatus
-				status.Progress = 100
-				status.Processed = int(atomic.LoadInt32(&t.successFileCnt))
-				status.Failed = int(atomic.LoadInt32(&t.failedFileCnt))
-				if finalStatus == "completed" {
-					status.Message = "处理完成"
-				} else {
-					status.Message = "处理失败"
-				}
+				status.Process = finalStatus
+				status.TotalProgress = 100
 			})
 
 		return nil

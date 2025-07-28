@@ -95,6 +95,14 @@ func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool 
 		if err != nil {
 			tracer.WithTrace(ctx).Errorf("update task history %d failed: %v", p.params.CodebaseID, err)
 		}
+		
+		// 更新Redis中的失败状态
+		_ = p.svcCtx.StatusManager.UpdateFileStatus(ctx, p.params.ClientId, p.params.CodebasePath, p.params.CodebaseName,
+			func(status *types.FileStatusResponseData) {
+				status.Process = "failed"
+				status.TotalProgress = 0
+			})
+		
 		return true
 	}
 	return false

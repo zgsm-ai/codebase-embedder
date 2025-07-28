@@ -85,23 +85,20 @@ func (sm *StatusManager) UpdateFileStatus(ctx context.Context, clientID, codebas
 	if currentStatus == nil {
 		// 如果状态不存在，创建新的
 		currentStatus = &types.FileStatusResponseData{
-			Status:      "pending",
-			Progress:    0,
-			TotalFiles:  0,
-			Processed:   0,
-			Failed:      0,
-			Message:     "等待处理",
-			UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-			TaskId:      0,
-			ChunkNumber: 0,
-			TotalChunks: 1,
+			Process:      "pending",
+			TotalProgress: 0,
+			FileList: []types.FileStatusItem{
+				{
+					Path:   codebasePath,
+					Status: "pending",
+				},
+			},
 		}
 	}
 	
 	// 应用更新函数
 	updateFn(currentStatus)
-	currentStatus.UpdatedAt = time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// 保存更新后的状态
 	return sm.SetFileStatus(ctx, clientID, codebasePath, codebaseName, currentStatus)
 }

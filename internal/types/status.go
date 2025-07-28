@@ -11,14 +11,13 @@ type FileStatusRequest struct {
 
 // FileStatusResponseData 文件状态查询响应数据
 type FileStatusResponseData struct {
-	Status      string `json:"status"`      // 处理状态: pending, processing, completed, failed
-	Progress    int    `json:"progress"`    // 处理进度百分比 0-100
-	TotalFiles  int    `json:"totalFiles"`  // 总文件数
-	Processed   int    `json:"processed"`   // 已处理文件数
-	Failed      int    `json:"failed"`      // 失败文件数
-	Message     string `json:"message"`     // 状态描述信息
-	UpdatedAt   string `json:"updatedAt"`   // 最后更新时间
-	TaskId      int    `json:"taskId"`      // 任务ID
-	ChunkNumber int    `json:"chunkNumber"` // 当前分片
-	TotalChunks int    `json:"totalChunks"` // 分片总数
+	Process      string `json:"process"`      // 整体提取状态（如：pending/processing/complete/failed）
+	TotalProgress int    `json:"totalProgress"`    // 当前分片整体提取进度（百分比，0-100）
+	FileList []FileStatusItem `json:"fileList"` // 文件列表
+}
+
+// FileStatusItem 单个文件状态项
+type FileStatusItem struct {
+	Path   string `json:"path"`   // 文件路径
+	Status string `json:"status"` // 文件状态（如：pending/processing/complete/failed）
 }
