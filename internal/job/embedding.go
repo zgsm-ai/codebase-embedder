@@ -54,6 +54,16 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			mu              sync.Mutex // 保护 addChunks
 		)
 
+		var fileStatusItems []types.FileStatusItem
+
+		for path, _ := range t.params.Files {
+			fileStatusItem := types.FileStatusItem{
+				Path:   path,  // 使用当前处理的文件路径，而不是codebasePath
+				Status: "processing",
+			}
+			fileStatusItems = append(fileStatusItems, fileStatusItem)
+		}
+
 		// 更新Redis中的处理状态为"processing"
 		// 使用代码库路径作为处理中的路径标识
 		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
@@ -61,6 +71,9 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				status.Process = "processing"
 				status.TotalProgress = 0
 			})
+
+
+
 
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
@@ -80,38 +93,30 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 					}
 					atomic.AddInt32(&t.failedFileCnt, 1)
 					
-					// 更新Redis中的失败状态，使用当前处理的文件路径
-					_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, path, t.params.CodebaseName,
-						func(status *types.FileStatusResponseData) {
-							processed := int(atomic.LoadInt32(&t.successFileCnt))
-							failed := int(atomic.LoadInt32(&t.failedFileCnt))
-							total := int(t.totalFileCnt)
-							if total > 0 {
-								status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
-							}
-						})
-					
 					return err
 				}
 				mu.Lock()
 				addChunks = append(addChunks, chunks...)
 				mu.Unlock()
-				atomic.AddInt32(&t.successFileCnt, 1)
 
-				// 更新Redis中的成功状态，使用当前处理的文件路径
-				_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, path, t.params.CodebaseName,
-					func(status *types.FileStatusResponseData) {
-						processed := int(atomic.LoadInt32(&t.successFileCnt))
-						failed := int(atomic.LoadInt32(&t.failedFileCnt))
-						total := int(t.totalFileCnt)
-						if total > 0 {
-							status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
-						}
-					})
+				atomic.AddInt32(&t.successFileCnt, 1)
 
 			}
 			return nil
 		}
+
+		// 更新Redis中的成功状态，使用当前处理的文件路径
+		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+			func(status *types.FileStatusResponseData) {
+				processed := int(atomic.LoadInt32(&t.successFileCnt))
+				failed := int(atomic.LoadInt32(&t.failedFileCnt))
+				total := int(t.totalFileCnt)
+				if total > 0 {
+					status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
+				}
+				status.FileList = fileStatusItems
+				// status.FileList = fileStatus  // 这里不需要重新赋值，因为已经在上面的循环中更新了
+			})
 
 		// 使用基础结构的并发处理方法
 		if err := t.processFilesConcurrently(ctx, processFile, t.svcCtx.Config.IndexTask.EmbeddingTask.MaxConcurrency); err != nil {
@@ -152,7 +157,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			})
 			if err != nil {
 				tracer.WithTrace(ctx).Errorf("embedding task upsert code chunks failed: %v", err)
-				t.failedFileCnt = t.successFileCnt
+				t.failedFileCnt += t.successFileCnt
 				t.successFileCnt = 0
 				saveErrs = append(saveErrs, err)
 			}
@@ -175,6 +180,13 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			func(status *types.FileStatusResponseData) {
 				status.Process = finalStatus
 				status.TotalProgress = 100
+				status.FileList = fileStatusItems
+				// 遍历 FileList，将所有状态为 "processing" 的文件标记为 "completed"
+				for i := range status.FileList {
+					if status.FileList[i].Status == "processing" {
+						status.FileList[i].Status = finalStatus
+					}
+				}
 			})
 
 		return nil

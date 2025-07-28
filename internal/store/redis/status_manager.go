@@ -32,7 +32,10 @@ func NewStatusManager(client *redis.Client) *StatusManager {
 // SetFileStatus 设置文件处理状态到Redis
 func (sm *StatusManager) SetFileStatus(ctx context.Context, clientID, codebasePath, codebaseName string, status *types.FileStatusResponseData) error {
 	key := sm.generateKey(clientID, codebasePath, codebaseName)
+	logx.Infof("11111111111111111111111111111111111111111")
 	logx.Infof("SetFileStatus Key: %s", key)
+	// 打印status日志
+	logx.Infof("SetFileStatus Status: %+v", status)
 	// 序列化状态数据
 	data, err := json.Marshal(status)
 	if err != nil {
@@ -68,6 +71,11 @@ func (sm *StatusManager) GetFileStatus(ctx context.Context, clientID, codebasePa
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal status data: %w", err)
 	}
+
+	logx.Infof("3333333333333333333333333333333333")
+	// 打印status日志
+	logx.Infof("GetFileStatus Status: %+v", status)
+
 	
 	return &status, nil
 }
@@ -87,14 +95,13 @@ func (sm *StatusManager) UpdateFileStatus(ctx context.Context, clientID, codebas
 		currentStatus = &types.FileStatusResponseData{
 			Process:      "pending",
 			TotalProgress: 0,
-			FileList: []types.FileStatusItem{
-				{
-					Path:   codebasePath,
-					Status: "pending",
-				},
-			},
 		}
 	}
+
+
+	logx.Infof("2222222222222222222222222222222222222222")
+	// 打印status日志
+	logx.Infof("UpdateFileStatus Status: %+v", currentStatus)
 	
 	// 应用更新函数
 	updateFn(currentStatus)

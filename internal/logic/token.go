@@ -26,9 +26,12 @@ func (l *TokenLogic) GenerateToken(req *types.TokenRequest) (*types.TokenRespons
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	
+	// 使用clientId和codebasePath生成token
+	// 这里使用简单的哈希组合，实际生产环境应使用更安全的JWT实现
+	token := fmt.Sprintf("%s_%s_%s", req.ClientId, req.CodebasePath, l.generateRandomString(16))
+
 	return &types.TokenResponseData{
-		Token:     "xxxxxxxxxxxxxxxxxx",
+		Token:     token,
 		ExpiresIn: 3600, // 1小时 = 3600秒
 		TokenType: "Bearer",
 	}, nil
