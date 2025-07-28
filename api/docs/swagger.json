@@ -10,8 +10,22 @@
   ],
   "swagger": "2.0",
   "info": {
-    "version": "1.0"
+    "version": "1.0",
+    "title": "Codebase Embedder API",
+    "description": "提供代码库嵌入管理、语义搜索和项目摘要功能的服务接口"
   },
+  "securityDefinitions": {
+    "apiKey": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
   "basePath": "/",
   "paths": {
     "/codebase-embedder/api/v1/embeddings": {
@@ -51,9 +65,10 @@
             }
           }
         ],
+        "description": "提交新的代码嵌入任务",
         "responses": {
           "200": {
-            "description": "",
+            "description": "任务创建成功",
             "schema": {
               "type": "object",
               "properties": {
@@ -62,6 +77,24 @@
                 }
               }
             }
+          }
+        },
+        "400": {
+          "description": "无效请求参数",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "401": {
+          "description": "未授权访问",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "500": {
+          "description": "服务器内部错误",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
           }
         }
       },
@@ -99,12 +132,31 @@
             "required": true
           }
         ],
+        "description": "删除指定代码库的嵌入数据",
         "responses": {
           "200": {
-            "description": "",
+            "description": "删除成功",
             "schema": {
               "type": "object"
             }
+          }
+        },
+        "400": {
+          "description": "无效请求参数",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "404": {
+          "description": "嵌入数据不存在",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "500": {
+          "description": "服务器内部错误",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
           }
         }
       }
@@ -135,9 +187,10 @@
             "required": true
           }
         ],
+        "description": "获取代码库摘要信息",
         "responses": {
           "200": {
-            "description": "",
+            "description": "摘要信息",
             "schema": {
               "type": "object",
               "properties": {
@@ -171,6 +224,52 @@
                   "type": "integer"
                 }
               }
+            }
+          }
+        },
+        "400": {
+          "description": "无效请求参数",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "404": {
+          "description": "项目不存在",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/codebase-embedder/api/v1/status": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "summary": "服务状态检查",
+        "operationId": "checkStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "服务正常运行",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "version": {
+                  "type": "string",
+                  "example": "1.0.0"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务异常",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
             }
           }
         }
@@ -217,9 +316,10 @@
             "allowEmptyValue": true
           }
         ],
+        "description": "执行语义代码搜索",
         "responses": {
           "200": {
-            "description": "",
+            "description": "搜索结果",
             "schema": {
               "type": "object",
               "properties": {
@@ -252,6 +352,35 @@
               }
             }
           }
+        },
+        "400": {
+          "description": "无效查询参数",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        },
+        "404": {
+          "description": "项目未嵌入",
+          "schema": {
+            "$ref": "#/definitions/ErrorResponse"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "description": "错误码",
+          "example": 400
+        },
+        "message": {
+          "type": "string",
+          "description": "错误信息",
+          "example": "无效的参数"
         }
       }
     }
