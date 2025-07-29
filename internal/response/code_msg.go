@@ -15,3 +15,18 @@ func (c *codeMsg) Error() string {
 func NewError(code int, msg string) error {
 	return &codeMsg{Code: code, Message: msg}
 }
+
+// NewParamError creates a new parameter error.
+func NewParamError(msg string) error {
+	return &codeMsg{Code: 400, Message: msg}
+}
+
+// NewAuthError creates a new authentication error.
+func NewAuthError(msg string) error {
+	return &codeMsg{Code: 401, Message: msg}
+}
+
+// NewPermissionError creates a new permission error.
+func NewPermissionError(msg string) error {
+	return &codeMsg{Code: 403, Message: msg}
+}

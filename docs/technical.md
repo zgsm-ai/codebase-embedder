@@ -1,524 +1,446 @@
-# 技术设计文档 - Codebase Embedder接口测试方案
+# 技术设计文档 - 代码库向量数据库查询接口
 
 ## 1. 设计概述
 
 ### 1.1 设计目标
-基于需求规格说明书，设计一套完整的接口测试技术方案，覆盖功能测试、性能测试、安全测试和兼容性测试四个维度，确保Codebase Embedder系统的4个核心RESTful接口质量达标。
+基于需求规格说明书，设计一个高性能、安全可靠的代码库向量数据库查询接口，支持通过clientId、codebasePath、codebaseName查询工程向量数据库的完整信息。
 
 ### 1.2 设计范围
-本技术设计涵盖测试框架架构、工具链选型、测试数据管理、CI/CD集成等关键技术方案，为后续测试实施提供技术指导。
+本技术设计涵盖系统架构集成、API接口设计、Weaviate查询优化、模块分层设计、错误处理、性能优化、安全认证和测试策略等关键技术方案。
 
-## 2. 测试框架结构设计
+## 2. 系统架构设计
 
 ### 2.1 整体架构图
 
 ```mermaid
 graph TB
-    subgraph "测试框架层"
-        A[测试执行引擎]
-        B[测试数据管理]
-        C[Mock服务层]
-        D[报告生成器]
+    subgraph "API网关层"
+        A[HTTP请求] --> B[Token认证中间件]
+        B --> C[查询接口Handler]
     end
     
-    subgraph "测试类型层"
-        E[功能测试套件]
-        F[性能测试套件]
-        G[安全测试套件]
-        H[兼容性测试套件]
+    subgraph "业务逻辑层"
+        C --> D[权限验证Logic]
+        D --> E[数据查询Logic]
+        E --> F[数据聚合Logic]
     end
     
-    subgraph "工具链层"
-        I[API测试工具]
-        J[性能测试工具]
-        K[安全扫描工具]
-        L[CI/CD工具]
+    subgraph "数据存储层"
+        F --> G[PostgreSQL Store]
+        F --> H[Weaviate Store]
     end
     
-    subgraph "被测系统"
-        M[Codebase Embedder API]
-        N[向量数据库]
-        O[PostgreSQL]
-        P[Redis]
+    subgraph "外部依赖"
+        G --> I[codebase表]
+        H --> J[向量数据库]
     end
     
-    A --> E
-    A --> F
-    A --> G
-    A --> H
-    
-    E --> I
-    F --> J
-    G --> K
-    
-    I --> M
-    J --> M
-    K --> M
-    
-    B --> C
-    C --> M
-    
-    D --> L
+    C -.-> K[错误处理中间件]
+    K -.-> L[统一响应格式]
 ```
 
-### 2.2 目录结构设计
+### 2.2 架构集成设计
+- **现有架构兼容性**: 完全兼容现有的internal/handler、internal/logic、internal/store三层架构
+- **模块扩展性**: 新增查询模块独立部署，不影响现有功能
+- **数据一致性**: 通过事务保证PostgreSQL和Weaviate数据的一致性
 
-```
-tests/
-├── api/                          # API测试层
-│   ├── functional/              # 功能测试
-│   │   ├── semantic_search/     # 语义搜索接口
-│   │   ├── index_summary/       # 索引摘要接口
-│   │   ├── create_index/        # 创建索引接口
-│   │   └── delete_index/        # 删除索引接口
-│   ├── performance/             # 性能测试
-│   │   ├── load_tests/          # 负载测试
-│   │   ├── stress_tests/        # 压力测试
-│   │   └── spike_tests/         # 峰值测试
-│   ├── security/                # 安全测试
-│   │   ├── input_validation/    # 输入验证
-│   │   ├── authorization/       # 权限控制
-│   │   └── data_protection/     # 数据保护
-│   └── compatibility/           # 兼容性测试
-│       ├── os_compatibility/    # 操作系统兼容
-│       └── path_formats/        # 路径格式兼容
-├── data/                        # 测试数据
-│   ├── fixtures/               # 固定测试数据
-│   ├── generators/             # 数据生成器
-│   └── mocks/                  # Mock数据
-├── utils/                      # 测试工具
-│   ├── client/                 # API客户端
-│   ├── assertions/             # 断言库
-│   └── reporters/              # 报告生成
-├── config/                     # 测试配置
-│   ├── environments/           # 环境配置
-│   └── test_data.yaml          # 测试数据配置
-└── reports/                    # 测试报告
-    ├── html/                   # HTML报告
-    ├── json/                   # JSON报告
-    └── junit/                  # JUnit格式报告
+## 3. API接口设计
+
+### 3.1 RESTful接口规范
+
+#### 3.1.1 接口详情
+- **端点**: `GET /codebase-embedder/api/v1/codebase/query`
+- **描述**: 根据clientId、codebasePath、codebaseName查询代码库向量数据库
+- **版本**: v1
+- **认证**: Bearer Token
+
+#### 3.1.2 请求参数
+| 参数名称 | 类型 | 位置 | 必填 | 描述 | 验证规则 |
+|----------|------|------|------|------|----------|
+| clientId | string | query | 是 | 客户端标识 | `^[a-zA-Z0-9_-]{1,64}$` |
+| codebasePath | string | query | 是 | 代码库路径 | 最大长度512字符 |
+| codebaseName | string | query | 是 | 代码库名称 | `^[a-zA-Z0-9_-]{1,128}$` |
+
+#### 3.1.3 请求示例
+```bash
+GET /codebase-embedder/api/v1/codebase/query?clientId=dev-001&codebasePath=/home/user/project&codebaseName=myapp
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
-### 2.3 包划分策略
+### 3.2 响应数据结构
 
-#### 2.3.1 按接口类型划分
-- `semantic_search_test.go` - 语义搜索接口测试
-- `index_summary_test.go` - 索引摘要接口测试
-- `create_index_test.go` - 创建索引接口测试
-- `delete_index_test.go` - 删除索引接口测试
-
-#### 2.3.2 按测试类型划分
-- `functional_test.go` - 功能测试套件
-- `performance_test.go` - 性能测试套件
-- `security_test.go` - 安全测试套件
-- `compatibility_test.go` - 兼容性测试套件
-
-## 3. 核心工具链选型
-
-### 3.1 功能测试工具
-
-| 工具类型 | 选型方案 | 版本要求 | 选择理由 |
-|----------|----------|----------|----------|
-| API测试框架 | Go-test + testify | 最新稳定版 | 与项目技术栈一致，原生支持并发测试 |
-| HTTP客户端 | resty | v2.7.0+ | 功能丰富，支持重试、超时、认证等 |
-| 断言库 | testify/assert | v1.8.0+ | 提供丰富的断言方法，错误信息清晰 |
-| 测试数据管理 | gofakeit | v6.19.0+ | 生成真实感的测试数据 |
-
-### 3.2 性能测试工具
-
-| 工具类型 | 选型方案 | 版本要求 | 选择理由 |
-|----------|----------|----------|----------|
-| 负载测试 | k6 | v0.44.0+ | 现代化性能测试工具，支持JavaScript脚本 |
-| 性能监控 | Prometheus + Grafana | 最新版 | 实时监控系统指标，可视化展示 |
-| 资源监控 | docker stats | 内置 | 容器化环境下的资源监控 |
-
-### 3.3 安全测试工具
-
-| 工具类型 | 选型方案 | 版本要求 | 选择理由 |
-|----------|----------|----------|----------|
-| 安全扫描 | OWASP ZAP | v2.12.0+ | 开源安全扫描工具，支持自动化测试 |
-| 静态分析 | gosec | v2.15.0+ | Go语言专用安全扫描工具 |
-| 依赖检查 | nancy | v1.0.0+ | 检查Go依赖的安全漏洞 |
-
-### 3.4 CI/CD集成工具
-
-| 工具类型 | 选型方案 | 版本要求 | 选择理由 |
-|----------|----------|----------|----------|
-| CI平台 | GitHub Actions | 最新版 | 与代码仓库深度集成，免费额度充足 |
-| 容器化 | Docker | 20.10+ | 保证测试环境一致性 |
-| 编排工具 | Docker Compose | 3.8+ | 快速搭建测试环境 |
-
-## 4. 测试数据管理方案
-
-### 4.1 测试数据分类
-
-#### 4.1.1 功能测试数据
-```yaml
-# test_data.yaml
-functional:
-  semantic_search:
-    valid_queries:
-      - "查找用户认证相关的函数"
-      - "搜索数据库连接代码"
-      - "获取API路由定义"
-    invalid_queries:
-      - ""  # 空查询
-      - "x" * 1000  # 超长查询
-      - "<script>alert('xss')</script>"  # XSS注入
-    boundary_cases:
-      - topK: 0, 1, 10, 100, 1000
-      - codebasePath: "/invalid/path", "/very/long/path/..." , "C:\\Windows\\System32"
-  
-  index_management:
-    valid_codebases:
-      - small: 100个文件以内
-      - medium: 1000-5000个文件
-      - large: 10000+个文件
-    invalid_paths:
-      - "/root/protected"
-      - "/etc/passwd"
-      - "../../../etc/hosts"
-```
-
-#### 4.1.2 性能测试数据
-```yaml
-performance:
-  load_levels:
-    - light: 10 concurrent users
-    - medium: 50 concurrent users
-    - heavy: 100 concurrent users
-    - extreme: 200 concurrent users
-  
-  test_datasets:
-    - small_repo: 100 files, 1MB total
-    - medium_repo: 5000 files, 100MB total
-    - large_repo: 50000 files, 1GB total
-```
-
-### 4.2 Mock实现策略
-
-#### 4.2.1 外部依赖Mock
-```go
-// 向量数据库Mock
-type MockVectorStore struct {
-    mock.Mock
-}
-
-func (m *MockVectorStore) Search(ctx context.Context, query string, topK int) ([]*types.SearchResult, error) {
-    args := m.Called(ctx, query, topK)
-    return args.Get(0).([]*types.SearchResult), args.Error(1)
-}
-
-// PostgreSQL Mock
-type MockDB struct {
-    mock.Mock
-}
-
-func (m *MockDB) GetIndexStatus(clientId, codebasePath string) (*types.IndexStatus, error) {
-    args := m.Called(clientId, codebasePath)
-    return args.Get(0).(*types.IndexStatus), args.Error(1)
-}
-```
-
-#### 4.2.2 测试数据生成器
-```go
-// 代码库生成器
-type CodebaseGenerator struct {
-    basePath string
-}
-
-func (g *CodebaseGenerator) Generate(size string) error {
-    switch size {
-    case "small":
-        return g.generateSmallRepo()
-    case "medium":
-        return g.generateMediumRepo()
-    case "large":
-        return g.generateLargeRepo()
-    }
-    return nil
-}
-```
-
-### 4.3 数据清理策略
-- **测试前清理**: 使用Docker容器隔离，每次测试重新创建环境
-- **测试中清理**: 每个测试用例执行后清理产生的数据
-- **测试后清理**: 使用defer机制确保资源释放
-
-## 5. CI/CD流水线集成设计
-
-### 5.1 流水线架构图
-
-```mermaid
-graph LR
-    A[代码提交] --> B[单元测试]
-    B --> C[接口测试]
-    C --> D[性能测试]
-    D --> E[安全扫描]
-    E --> F[生成报告]
-    F --> G[质量门禁]
-    G --> H[部署]
-    
-    subgraph "测试阶段"
-        C1[功能测试]
-        C2[兼容性测试]
-        C --> C1
-        C --> C2
-    end
-    
-    subgraph "报告生成"
-        F1[HTML报告]
-        F2[JSON报告]
-        F3[JUnit报告]
-        F --> F1
-        F --> F2
-        F --> F3
-    end
-```
-
-### 5.2 GitHub Actions工作流
-
-```yaml
-# .github/workflows/api-test.yml
-name: API Testing Pipeline
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  functional-test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: testpass
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:6-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      weaviate:
-        image: semitechnologies/weaviate:1.18.0
-        env:
-          QUERY_DEFAULTS_LIMIT: 25
-          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-          PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-          DEFAULT_VECTORIZER_MODULE: 'none'
-
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: 1.19
-    
-    - name: Install dependencies
-      run: |
-        go mod download
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-    
-    - name: Run functional tests
-      run: |
-        go test -v ./tests/api/functional/... -coverprofile=coverage.out
-        go tool cover -html=coverage.out -o coverage.html
-    
-    - name: Run security scan
-      run: gosec ./...
-    
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.out
-```
-
-### 5.3 性能测试集成
-
-```yaml
-# .github/workflows/performance-test.yml
-name: Performance Testing
-
-on:
-  schedule:
-    - cron: '0 2 * * *'  # 每天凌晨2点运行
-  workflow_dispatch:
-
-jobs:
-  performance-test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Run k6 performance tests
-      run: |
-        docker run --rm \
-          -v $PWD/tests/performance:/tests \
-          loadimpact/k6 run /tests/load_test.js
-    
-    - name: Upload performance results
-      uses: actions/upload-artifact@v3
-      with:
-        name: performance-results
-        path: tests/reports/performance/
-```
-
-## 6. 测试执行策略
-
-### 6.1 测试分层策略
-
-| 测试层级 | 执行频率 | 触发条件 | 执行时间 |
-|----------|----------|----------|----------|
-| 单元测试 | 每次提交 | 代码变更 | < 2分钟 |
-| 接口测试 | 每次提交 | 代码变更 | < 5分钟 |
-| 性能测试 | 每日凌晨 | 定时任务 | < 30分钟 |
-| 安全测试 | 每次发布 | 版本发布 | < 15分钟 |
-| 兼容性测试 | 每周 | 定时任务 | < 60分钟 |
-
-### 6.2 环境管理
-
-#### 6.2.1 测试环境矩阵
-```yaml
-environments:
-  dev:
-    database: postgres://localhost:5432/testdb
-    redis: redis://localhost:6379
-    weaviate: http://localhost:8080
-    
-  staging:
-    database: postgres://staging:5432/testdb
-    redis: redis://staging:6379
-    weaviate: http://staging:8080
-    
-  production:
-    database: postgres://prod:5432/testdb
-    redis: redis://prod:6379
-    weaviate: http://prod:8080
-```
-
-#### 6.2.2 容器化测试环境
-```dockerfile
-# Dockerfile.test
-FROM golang:1.19-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go build -o api-test ./cmd/main.go
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/api-test .
-COPY --from=builder /app/tests ./tests
-CMD ["./api-test"]
-```
-
-## 7. 质量门禁设计
-
-### 7.1 代码覆盖率要求
-- 单元测试覆盖率: ≥80%
-- 接口测试覆盖率: ≥90%
-- 整体测试覆盖率: ≥85%
-
-### 7.2 性能指标要求
-- 搜索接口P95响应时间: ≤2秒
-- 索引接口吞吐量: ≥100文件/分钟
-- 并发处理能力: ≥50并发用户
-
-### 7.3 安全要求
-- 高危漏洞: 0个
-- 中危漏洞: ≤3个
-- 低危漏洞: ≤10个
-
-## 8. 监控与报告
-
-### 8.1 测试监控指标
-
-| 监控维度 | 关键指标 | 告警阈值 | 监控工具 |
-|----------|----------|----------|----------|
-| 测试成功率 | 测试用例通过率 | <95% | GitHub Actions |
-| 测试执行时间 | 单次测试耗时 | >10分钟 | Prometheus |
-| 资源使用 | CPU、内存使用率 | >80% | Grafana |
-| 错误率 | 接口错误率 | >1% | ELK Stack |
-
-### 8.2 报告生成策略
-
-#### 8.2.1 测试报告格式
-- **HTML报告**: 详细的可视化报告，包含图表和趋势分析
-- **JSON报告**: 结构化数据，便于后续处理
-- **JUnit报告**: 与CI/CD工具集成
-
-#### 8.2.2 报告内容结构
+#### 3.2.1 成功响应 (200 OK)
 ```json
 {
-  "summary": {
-    "total_tests": 100,
-    "passed": 95,
-    "failed": 3,
-    "skipped": 2,
-    "success_rate": 95.0
-  },
-  "details": {
-    "functional": {...},
-    "performance": {...},
-    "security": {...},
-    "compatibility": {...}
-  },
-  "trends": {
-    "last_7_days": [...],
-    "last_30_days": [...]
+  "code": 200,
+  "message": "success",
+  "data": {
+    "codebaseId": 12345,
+    "codebaseName": "myapp",
+    "codebasePath": "/home/user/project",
+    "summary": {
+      "totalFiles": 150,
+      "totalChunks": 3200,
+      "lastUpdateTime": "2025-07-29T10:30:00Z",
+      "indexStatus": "completed",
+      "indexProgress": 100
+    },
+    "languageDistribution": [
+      {
+        "language": "go",
+        "fileCount": 80,
+        "chunkCount": 1800,
+        "percentage": 56.25
+      },
+      {
+        "language": "javascript",
+        "fileCount": 45,
+        "chunkCount": 950,
+        "percentage": 29.69
+      }
+    ],
+    "recentFiles": [
+      {
+        "filePath": "src/main.go",
+        "lastIndexed": "2025-07-29T10:25:00Z",
+        "chunkCount": 25,
+        "fileSize": 2048
+      }
+    ],
+    "indexStats": {
+      "averageChunkSize": 150,
+      "maxChunkSize": 512,
+      "minChunkSize": 10,
+      "totalVectors": 3200
+    }
   }
 }
 ```
 
-## 9. 风险评估与缓解
+#### 3.2.2 错误响应
+```json
+{
+  "code": 403,
+  "message": "Permission denied: client does not have access to this codebase",
+  "data": null
+}
+```
 
-### 9.1 技术风险
+## 4. 数据库查询设计
 
-| 风险描述 | 概率 | 影响 | 缓解策略 |
-|----------|------|------|----------|
-| 测试环境不稳定 | 中 | 高 | 使用容器化技术，确保环境一致性 |
-| 测试数据不足 | 低 | 中 | 建立测试数据生成器，覆盖各种场景 |
-| 性能测试干扰生产 | 低 | 高 | 使用独立测试环境，避免影响生产 |
-| 安全测试误报 | 中 | 中 | 建立白名单机制，减少误报 |
+### 4.1 Weaviate查询设计
 
-### 9.2 实施风险
+#### 4.1.1 GraphQL查询结构
+```graphql
+{
+  Get {
+    CodeChunk(
+      where: {
+        operator: And
+        operands: [
+          { path: ["codebaseId"], operator: Equal, valueInt: 12345 }
+        ]
+      }
+    ) {
+      filePath
+      language
+      chunkIndex
+      content
+      tokenCount
+      lastIndexed
+    }
+  }
+}
 
-| 风险描述 | 概率 | 影响 | 缓解策略 |
-|----------|------|------|----------|
-| 测试用例维护成本高 | 中 | 中 | 使用数据驱动测试，减少重复代码 |
-| 测试执行时间过长 | 中 | 中 | 并行执行测试，优化测试策略 |
-| 团队技能不足 | 低 | 中 | 提供培训和技术支持 |
+{
+  Aggregate {
+    CodeChunk(
+      where: {
+        operator: And
+        operands: [
+          { path: ["codebaseId"], operator: Equal, valueInt: 12345 }
+        ]
+      }
+    ) {
+      meta {
+        count
+      }
+      filePath {
+        count
+        topOccurrences {
+          value
+          occurs
+        }
+      }
+      language {
+        count
+        topOccurrences {
+          value
+          occurs
+        }
+      }
+    }
+  }
+}
+```
 
-## 10. 后续计划
+#### 4.1.2 索引优化策略
+- **向量索引**: HNSW算法，M=16, efConstruction=128
+- **标量索引**: 为codebaseId、language、filePath建立倒排索引
+- **复合索引**: (codebaseId, language)联合索引加速分组查询
 
-### 10.1 短期计划（1-2周）
-- [ ] 搭建基础测试框架
-- [ ] 实现核心功能测试用例
-- [ ] 配置CI/CD流水线
-- [ ] 建立测试数据生成器
+### 4.2 PostgreSQL查询设计
 
-### 10.2 中期计划（3-4周）
-- [ ] 完善性能测试场景
-- [ ] 集成安全测试工具
-- [ ] 建立测试报告系统
-- [ ] 优化测试执行效率
+#### 4.2.1 权限验证查询
+```sql
+-- 验证clientId与codebase的关联
+SELECT id, name, client_path, file_count, total_size, status
+FROM codebase 
+WHERE client_id = ? AND name = ? AND client_path = ?
+LIMIT 1;
+```
 
-### 10.3 长期计划（1-3个月）
-- [ ] 建立测试度量体系
-- [ ] 实现测试自动化运维
-- [ ] 建立测试知识库
-- [ ] 持续优化测试策略
+#### 4.2.2 性能优化
+- **索引设计**: 
+  - 主键索引: `PRIMARY KEY (id)`
+  - 复合索引: `INDEX idx_client_codebase (client_id, name, client_path)`
+  - 覆盖索引: `INDEX idx_status (status, updated_at)`
+
+## 5. 模块设计
+
+### 5.1 分层架构设计
+
+#### 5.1.1 Handler层 (internal/handler/codebase_query.go)
+```go
+type CodebaseQueryHandler struct {
+    svcCtx *svc.ServiceContext
+}
+
+func (h *CodebaseQueryHandler) QueryCodebase(w http.ResponseWriter, r *http.Request) {
+    // 1. 参数验证
+    // 2. 权限检查
+    // 3. 调用Logic层
+    // 4. 返回响应
+}
+```
+
+#### 5.1.2 Logic层 (internal/logic/codebase_query_logic.go)
+```go
+type CodebaseQueryLogic struct {
+    logx.Logger
+    ctx    context.Context
+    svcCtx *svc.ServiceContext
+}
+
+func (l *CodebaseQueryLogic) QueryCodebase(req *types.CodebaseQueryRequest) (*types.CodebaseQueryResponse, error) {
+    // 1. 权限验证
+    // 2. 获取codebaseId
+    // 3. 查询Weaviate统计数据
+    // 4. 聚合和格式化数据
+    // 5. 返回结果
+}
+```
+
+#### 5.1.3 Store层
+- **PostgreSQL Store** (internal/store/database/codebase_store.go)
+- **Weaviate Store** (internal/store/vector/codebase_vector_store.go)
+
+### 5.2 核心数据结构
+
+#### 5.2.1 请求结构
+```go
+type CodebaseQueryRequest struct {
+    ClientId     string `json:"clientId" validate:"required,len=1,64"`
+    CodebasePath string `json:"codebasePath" validate:"required,len=1,512"`
+    CodebaseName string `json:"codebaseName" validate:"required,len=1,128"`
+}
+```
+
+#### 5.2.2 响应结构
+```go
+type CodebaseQueryResponse struct {
+    CodebaseId   int32                    `json:"codebaseId"`
+    CodebaseName string                   `json:"codebaseName"`
+    CodebasePath string                   `json:"codebasePath"`
+    Summary      *CodebaseSummary         `json:"summary"`
+    LanguageDist []LanguageDistribution   `json:"languageDistribution"`
+    RecentFiles  []RecentFileInfo         `json:"recentFiles"`
+    IndexStats   *IndexStatistics         `json:"indexStats"`
+}
+```
+
+## 6. 错误处理机制
+
+### 6.1 错误分类与处理
+
+| 错误类型 | HTTP状态码 | 错误消息 | 处理策略 |
+|----------|------------|----------|----------|
+| 参数验证错误 | 400 | Invalid parameters | 详细字段级错误信息 |
+| 权限拒绝 | 403 | Permission denied | 不暴露内部细节 |
+| 数据不存在 | 404 | Codebase not found | 友好提示 |
+| 数据库错误 | 500 | Internal server error | 记录日志，返回通用错误 |
+| 查询超时 | 504 | Query timeout | 异步处理或重试机制 |
+
+### 6.2 错误处理流程
+```mermaid
+graph TD
+    A[请求处理] --> B{发生错误?}
+    B -->|是| C[错误分类]
+    C --> D[记录日志]
+    D --> E[返回标准化错误响应]
+    B -->|否| F[返回成功响应]
+```
+
+## 7. 性能优化策略
+
+### 7.1 查询优化
+- **预聚合查询**: 使用Weaviate的Aggregate API减少数据传输
+- **分页查询**: 对recentFiles实施分页，默认返回最近10个文件
+- **字段选择**: 只查询必要字段，减少网络传输
+- **连接池**: 复用数据库连接，减少连接开销
+
+### 7.2 缓存策略
+- **无缓存设计**: 为保证数据实时性，不引入缓存
+- **查询优化**: 通过数据库索引和查询优化提升性能
+
+### 7.3 并发控制
+- **限流机制**: 基于clientId的令牌桶限流，100 QPS/client
+- **连接池配置**: 
+  - PostgreSQL: 最大连接数50
+  - Weaviate: 最大并发连接数20
+
+### 7.4 性能指标
+| 指标 | 目标值 | 监控方法 |
+|------|--------|----------|
+| P95响应时间 | ≤500ms | Prometheus监控 |
+| 并发处理能力 | ≥100并发 | 负载测试 |
+| 错误率 | <0.1% | 错误日志监控 |
+| 数据库查询时间 | ≤100ms | 慢查询日志 |
+
+## 8. 安全认证机制
+
+### 8.1 认证流程
+```mermaid
+sequenceDiagram
+    Client->>API: 请求 + Token
+    API->>Auth: 验证Token
+    Auth->>API: 返回clientId
+    API->>DB: 验证clientId权限
+    DB->>API: 返回验证结果
+    API->>Client: 返回查询结果或错误
+```
+
+### 8.2 权限验证
+- **Token验证**: 使用JWT Token验证用户身份
+- **权限检查**: 验证clientId与codebasePath的关联关系
+- **审计日志**: 记录所有查询操作
+  - 用户标识
+  - 查询参数
+  - 查询时间
+  - 响应状态
+
+### 8.3 安全防护措施
+- **输入验证**: 严格验证所有输入参数
+- **SQL注入防护**: 使用参数化查询
+- **XSS防护**: 对所有输出进行HTML转义
+- **速率限制**: 基于IP和clientId的双重限流
+
+## 9. 测试策略
+
+### 9.1 单元测试
+- **测试覆盖率**: ≥80%
+- **测试内容**:
+  - 参数验证逻辑
+  - 权限验证逻辑
+  - 数据聚合逻辑
+  - 错误处理逻辑
+
+### 9.2 集成测试
+- **测试场景**:
+  - 正常查询流程
+  - 权限验证失败
+  - 数据不存在
+  - 数据库连接失败
+  - 并发查询测试
+
+### 9.3 性能测试
+- **测试工具**: k6
+- **测试场景**:
+  - 100并发用户持续5分钟
+  - 大数据集查询测试
+  - 内存和CPU使用率监控
+
+### 9.4 安全测试
+- **测试内容**:
+  - SQL注入测试
+  - XSS攻击测试
+  - 权限绕过测试
+  - 速率限制测试
+
+### 9.5 测试数据准备
+```go
+// 测试数据生成器
+func generateTestCodebase() *model.Codebase {
+    return &model.Codebase{
+        ID:         12345,
+        ClientID:   "test-client-001",
+        UserID:     "user@example.com",
+        Name:       "test-project",
+        ClientPath: "/home/test/project",
+        Status:     "completed",
+        FileCount:  150,
+        TotalSize:  1024000,
+    }
+}
+```
+
+## 10. 部署与监控
+
+### 10.1 部署策略
+- **蓝绿部署**: 零停机时间部署
+- **健康检查**: `/health`端点监控服务状态
+- **配置管理**: 使用环境变量管理配置
+
+### 10.2 监控指标
+- **业务指标**:
+  - 查询成功率
+  - 平均响应时间
+  - 错误率分布
+- **系统指标**:
+  - CPU使用率
+  - 内存使用率
+  - 数据库连接数
+  - 响应时间分布
+
+### 10.3 告警机制
+- **响应时间告警**: P95 > 500ms
+- **错误率告警**: 错误率 > 1%
+- **数据库连接告警**: 连接数 > 80%
+
+## 11. 技术选型总结
+
+| 组件类型 | 技术选型 | 版本 | 选择理由 |
+|----------|----------|------|----------|
+| Web框架 | Go标准库 net/http | 1.19+ | 轻量级，性能优秀 |
+| 数据库 | PostgreSQL | 13+ | 成熟稳定，支持复杂查询 |
+| 向量数据库 | Weaviate | 1.18+ | 专为向量搜索优化 |
+| 验证库 | go-playground/validator | v10 | 功能强大，社区活跃 |
+| 监控 | Prometheus + Grafana | 最新版 | 云原生标准监控方案 |
+| 限流 | golang.org/x/time/rate | 标准库 | 官方支持，稳定可靠 |
+
+## 12. 后续扩展计划
+
+### 12.1 功能扩展
+- 支持更多查询维度（时间范围、文件类型等）
+- 支持批量查询
+- 支持数据导出功能
+
+### 12.2 性能优化
+- 引入Redis缓存热点数据
+- 支持异步查询和结果推送
+- 实现查询结果分页
+
+### 12.3 安全增强
+- 支持API Key认证
+- 实现细粒度权限控制
+- 支持数据脱敏配置

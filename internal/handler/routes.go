@@ -57,4 +57,16 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		},
 		rest.WithPrefix("/codebase-embedder"),
 	)
+
+	// 添加代码库查询接口路由
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodPost,
+				Path:    "/api/v1/codebase/query",
+				Handler: NewQueryCodebaseHandler(serverCtx).QueryCodebase,
+			},
+		},
+		rest.WithPrefix("/codebase-embedder"),
+	)
 }

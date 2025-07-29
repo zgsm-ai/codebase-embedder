@@ -265,6 +265,149 @@ func getFloatValue(obj map[string]interface{}, key string) float64 {
 	return 0
 }
 
+func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error) {
+	tenantName, err := r.generateTenantName(codebasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// 定义GraphQL字段
+	fields := []graphql.Field{
+		{Name: "_additional", Fields: []graphql.Field{
+			{Name: "id"},
+			{Name: "lastUpdateTimeUnix"},
+		}},
+		{Name: MetadataFilePath},
+		{Name: MetadataLanguage},
+		{Name: Content},
+		{Name: MetadataRange},
+		{Name: MetadataTokenCount},
+	}
+
+	// 构建过滤器
+	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
+		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
+
+	// 执行查询，获取所有记录
+	var allRecords []*types.CodebaseRecord
+	limit := 1000 // 每批获取1000条记录
+	offset := 0
+
+	for {
+		res, err := r.client.GraphQL().Get().
+			WithClassName(r.className).
+			WithFields(fields...).
+			WithWhere(codebaseFilter).
+			WithLimit(limit).
+			WithOffset(offset).
+			WithTenant(tenantName).
+			Do(ctx)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get codebase records: %w", err)
+		}
+
+		if res == nil || res.Data == nil {
+			break
+		}
+
+		// 解析响应
+		records, err := r.unmarshalCodebaseRecordsResponse(res)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
+		}
+
+		if len(records) == 0 {
+			break
+		}
+
+		allRecords = append(allRecords, records...)
+		offset += limit
+
+		// 如果获取的记录数小于limit，说明已经获取完所有记录
+		if len(records) < limit {
+			break
+		}
+	}
+
+	return allRecords, nil
+}
+
+func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLResponse) ([]*types.CodebaseRecord, error) {
+	if len(res.Errors) > 0 {
+		var errMsg string
+		for _, e := range res.Errors {
+			errMsg += e.Message
+		}
+		return nil, fmt.Errorf("failed to get codebase records: %s", errMsg)
+	}
+
+	// 检查响应是否为空
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	// 获取 Get 字段
+	data, ok := res.Data["Get"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: 'Get' field not found or has wrong type")
+	}
+
+	// 获取类名对应的数据
+	results, ok := data[r.className].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: class data not found or has wrong type")
+	}
+
+	records := make([]*types.CodebaseRecord, 0, len(results))
+	for _, result := range results {
+		obj, ok := result.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// 提取附加属性
+		additional, ok := obj["_additional"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// 解析最后更新时间
+		var lastUpdated time.Time
+		if lastUpdateUnix, ok := additional["lastUpdateTimeUnix"].(float64); ok {
+			lastUpdated = time.Unix(int64(lastUpdateUnix), 0)
+		} else {
+			lastUpdated = time.Now()
+		}
+
+		// 解析范围信息
+		var rangeInfo []int
+		if rangeData, ok := obj[MetadataRange].([]interface{}); ok {
+			rangeInfo = make([]int, len(rangeData))
+			for i, v := range rangeData {
+				if num, ok := v.(float64); ok {
+					rangeInfo[i] = int(num)
+				}
+			}
+		}
+
+		// 创建记录
+		record := &types.CodebaseRecord{
+			Id:          getStringValue(additional, "id"),
+			FilePath:    getStringValue(obj, MetadataFilePath),
+			Language:    getStringValue(obj, MetadataLanguage),
+			Content:     getStringValue(obj, Content),
+			Range:       rangeInfo,
+			TokenCount:  int(getFloatValue(obj, MetadataTokenCount)),
+			LastUpdated: lastUpdated,
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
 func (r *weaviateWrapper) Close() {
 }
 

@@ -20,6 +20,7 @@ codebase-indexer is the context module of [ZGSM (ZhuGe Smart Mind) AI Programmin
 
 - 🔍 Semantic code search with embeddings
 - 🌐 Multi-language support
+- 📊 Codebase statistics and information query API
 
 ## Requirements
 

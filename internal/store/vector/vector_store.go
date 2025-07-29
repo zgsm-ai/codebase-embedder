@@ -13,6 +13,7 @@ import (
 type Store interface {
 	DeleteByCodebase(ctx context.Context, codebaseId int32, codebasePath string) error
 	GetIndexSummary(ctx context.Context, codebaseId int32, codebasePath string) (*types.EmbeddingSummary, error)
+	GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error)
 	InsertCodeChunks(ctx context.Context, docs []*types.CodeChunk, options Options) error
 	UpsertCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
 	DeleteCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
