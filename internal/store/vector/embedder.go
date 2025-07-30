@@ -91,6 +91,7 @@ func (e *customEmbedder) EmbedQuery(ctx context.Context, query string) ([]float3
 	tracer.WithTrace(ctx).Info("start to embed query")
 	vectors, err := e.doEmbeddings(ctx, [][]byte{[]byte(query)})
 	if err != nil {
+		
 		return nil, err
 	}
 	if len(vectors) == 0 {
@@ -109,6 +110,10 @@ func (e *customEmbedder) doEmbeddings(ctx context.Context, textsByte [][]byte) (
 
 	embeddings, err := e.embeddingClient.CreateEmbeddings(ctx, texts, e.config.Model)
 	if err != nil {
+		for _,text := range texts {
+			tracer.WithTrace(ctx).Errorf("embed query file len %d failed, err: %v", len(text), err)
+		}
+
 		return nil, err
 	}
 

@@ -80,7 +80,7 @@ func (p *baseProcessor) updateTaskSuccess(ctx context.Context) error {
 // handleIfTaskFailed 处理任务失败情况
 func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool {
 	if err != nil {
-		tracer.WithTrace(ctx).Errorf("index task failed, err: %v, file:%v ", err, p.params)
+		tracer.WithTrace(ctx).Errorf("index task failed, err: %v", err)
 		if errors.Is(err, errs.InsertDatabaseFailed) {
 			return true
 		}
@@ -95,13 +95,6 @@ func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool 
 		if err != nil {
 			tracer.WithTrace(ctx).Errorf("update task history %d failed: %v", p.params.CodebaseID, err)
 		}
-		
-		// 更新Redis中的失败状态
-		_ = p.svcCtx.StatusManager.UpdateFileStatus(ctx, p.params.ClientId, p.params.CodebasePath, p.params.CodebaseName,
-			func(status *types.FileStatusResponseData) {
-				status.Process = "failed"
-				status.TotalProgress = 0
-			})
 		
 		return true
 	}

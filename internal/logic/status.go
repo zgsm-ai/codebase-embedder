@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/zeromicro/go-zero/core/logx"
-	"github.com/zgsm-ai/codebase-indexer/internal/dao/query"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
@@ -39,54 +38,16 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 		return redisStatus, nil
 	}
 	
-	// Redis中没有状态，从数据库查询
-	q := query.Use(nil) // 使用默认查询实例
-	indexHistory := q.IndexHistory
-	history, err := indexHistory.WithContext(l.ctx).
-		Where(indexHistory.CodebasePath.Eq(req.CodebasePath)).
-		Where(indexHistory.CodebaseName.Eq(req.CodebaseName)).
-		Order(indexHistory.CreatedAt.Desc()).
-		First()
 	
-	if err != nil {
-		// 如果没有找到记录，返回初始状态
-		return &types.FileStatusResponseData{
-			Process:      "pending",
-			TotalProgress: 0,
-			FileList: []types.FileStatusItem{
-				{Path: req.CodebasePath, Status: "pending"},
-			},
-		}, nil
-	}
 
-	// 根据历史记录计算状态
-	status := l.convertStatus(history.Status)
-	
-	// 处理可能为nil的指针字段
-	totalFiles := int32(0)
-	if history.TotalFileCount != nil {
-		totalFiles = *history.TotalFileCount
-	}
-	
-	processedFiles := int32(0)
-	if history.TotalSuccessCount != nil {
-		processedFiles = *history.TotalSuccessCount
-	}
-	
-	progress := l.calculateProgress(status, int(processedFiles), int(totalFiles))
-	
-	response := &types.FileStatusResponseData{
-		Process:      status,
-		TotalProgress: progress,
+	// 如果没有找到记录，返回初始状态
+	return &types.FileStatusResponseData{
+		Process:      "pending",
+		TotalProgress: 0,
 		FileList: []types.FileStatusItem{
-			{Path: req.CodebasePath, Status: status},
+			{Path: req.CodebasePath, Status: "pending"},
 		},
-	}
-	
-	// 将状态缓存到Redis
-	_ = statusManager.SetFileStatus(l.ctx, req.ClientId, req.CodebasePath, req.CodebaseName, response)
-	
-	return response, nil
+	}, nil
 }
 
 // convertStatus 转换数据库状态为API状态

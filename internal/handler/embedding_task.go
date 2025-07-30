@@ -45,7 +45,8 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		req.ClientId = r.FormValue("clientId")
 		req.CodebasePath = r.FormValue("codebasePath")
 		req.CodebaseName = r.FormValue("codebaseName")
-		req.UploadToken = r.FormValue("uploadToken")
+		// req.UploadToken = r.FormValue("uploadToken")
+		req.UploadToken = ""
 		req.ExtraMetadata = r.FormValue("extraMetadata")
 		
 		// 解析可选的整数字段
@@ -72,10 +73,6 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		}
 		if req.CodebaseName == "" {
 			response.Error(w, errors.New("missing required parameter: codebaseName"))
-			return
-		}
-		if req.UploadToken == "" {
-			response.Error(w, errors.New("missing required parameter: uploadToken"))
 			return
 		}
 

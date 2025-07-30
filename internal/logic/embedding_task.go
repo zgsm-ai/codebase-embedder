@@ -125,6 +125,23 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 	// 遍历ZIP中的所有文件
 	fileCount := 0
+	hasShenmaSync := false
+	shenmaSyncFiles := make(map[string][]byte)
+	
+	// 首先检查是否存在.shenma_sync文件夹
+	for _, zipFile := range zipReader.File {
+		if strings.HasPrefix(zipFile.Name, ".shenma_sync/") {
+			hasShenmaSync = true
+			break
+		}
+	}
+	
+	// 如果没有.shenma_sync文件夹，返回错误
+	if !hasShenmaSync {
+		return nil, fmt.Errorf("ZIP文件中必须包含.shenma_sync文件夹")
+	}
+	
+	// 遍历ZIP中的所有文件
 	for _, zipFile := range zipReader.File {
 		// 跳过目录
 		if zipFile.FileInfo().IsDir() {
@@ -147,6 +164,26 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 		// 存储文件内容到映射
 		files[zipFile.Name] = content
+		
+		// 如果是.shenma_sync文件夹中的文件，额外存储并打印
+		if strings.HasPrefix(zipFile.Name, ".shenma_sync/") {
+			shenmaSyncFiles[zipFile.Name] = content
+			l.Logger.Infof("读取.shenma_sync文件夹中的文件: %s", zipFile.Name)
+			l.Logger.Infof("文件内容:\n%s", string(content))
+			
+			// 额外输出到控制台，确保用户能看到
+			fmt.Printf("=== .shenma_sync文件内容 ===\n")
+			fmt.Printf("文件名: %s\n", zipFile.Name)
+			fmt.Printf("内容长度: %d 字节\n", len(content))
+			fmt.Printf("内容:\n%s\n", string(content))
+			fmt.Printf("========================\n\n")
+		}
+	}
+	
+	// 打印.shenma_sync文件夹中的文件摘要
+	l.Logger.Infof("共找到 %d 个.shenma_sync文件夹中的文件", len(shenmaSyncFiles))
+	for fileName := range shenmaSyncFiles {
+		l.Logger.Infof(" - %s", fileName)
 	}
 
 	// 更新codebase的file_count和total_size字段
