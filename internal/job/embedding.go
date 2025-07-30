@@ -72,9 +72,6 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				status.TotalProgress = 0
 			})
 
-
-
-
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
 			var result fileProcessResult
@@ -104,19 +101,6 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			}
 			return nil
 		}
-
-		// 更新Redis中的成功状态，使用当前处理的文件路径
-		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
-			func(status *types.FileStatusResponseData) {
-				processed := int(atomic.LoadInt32(&t.successFileCnt))
-				failed := int(atomic.LoadInt32(&t.failedFileCnt))
-				total := int(t.totalFileCnt)
-				if total > 0 {
-					status.TotalProgress = int(float64(processed+failed) / float64(total) * 100)
-				}
-				status.FileList = fileStatusItems
-				// status.FileList = fileStatus  // 这里不需要重新赋值，因为已经在上面的循环中更新了
-			})
 
 		// 使用基础结构的并发处理方法
 		if err := t.processFilesConcurrently(ctx, processFile, t.svcCtx.Config.IndexTask.EmbeddingTask.MaxConcurrency); err != nil {

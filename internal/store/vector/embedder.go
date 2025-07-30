@@ -61,12 +61,18 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 		batch := make([][]byte, end-start)
 		for i := 0; i < end-start; i++ {
 			batch[i] = chunks[start+i].Content
+			tracer.WithTrace(ctx).Infof("execute to %s embedding %d",chunks[start+i].FilePath, len(batch[i]))
 		}
+
+		
 
 		// 执行嵌入
 		embeddings, err := e.doEmbeddings(ctx, batch)
 		if err != nil {
-			return nil, err
+			tracer.WithTrace(ctx).Errorf("e.doEmbeddings(ctx, batch) filed: %v ",  err)
+			// continue
+			break
+			// return nil, err
 		}
 
 		// 将嵌入结果与原始块关联
