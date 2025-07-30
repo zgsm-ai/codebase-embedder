@@ -135,9 +135,9 @@ type DeleteCodebaseResponseData struct {
 }
 
 type DeleteIndexRequest struct {
-	ClientId     string `form:"clientId"`     // 用户机器ID（如MAC地址）
-	CodebasePath string `form:"codebasePath"` // 项目绝对路径
-	FilePaths    string `form:"filePaths"`
+	ClientId     string `form:"clientId"`               // 用户机器ID（如MAC地址）
+	CodebasePath string `form:"codebasePath"`           // 项目绝对路径
+	FilePaths    string `form:"filePaths,optional"`     // 要删除的文件路径file1.js 如果不传则根据clientId、codebasePath 删除工程
 }
 
 type DeleteIndexResponseData struct {

@@ -34,7 +34,7 @@ func NewIndexLogic(ctx context.Context, svcCtx *svc.ServiceContext) *IndexLogic 
 func (l *IndexLogic) DeleteIndex(req *types.DeleteIndexRequest) (resp *types.DeleteIndexResponseData, err error) {
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
-	filePaths := strings.Split(req.FilePaths, ",")
+	filePaths := req.FilePaths
 
 	// 查找代码库记录
 	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
@@ -47,12 +47,21 @@ func (l *IndexLogic) DeleteIndex(req *types.DeleteIndexRequest) (resp *types.Del
 
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
+	// 如果filePaths为空，则删除整个工程的嵌入数据
+	if filePaths == "" {
+		if err = l.svcCtx.VectorStore.DeleteByCodebase(ctx, codebase.ID, codebase.Path); err != nil {
+			return nil, fmt.Errorf("failed to delete embedding codebase, err:%w", err)
+		}
+		return &types.DeleteIndexResponseData{}, nil
+	}
+
+	// 如果指定了filePaths，则只删除指定文件的嵌入数据
 	var deleteChunks []*types.CodeChunk
-	for _, path := range filePaths {
+	for _, path := range strings.Split(filePaths, ",") {
 		deleteChunks = append(deleteChunks, &types.CodeChunk{
 			CodebaseId:   codebase.ID,
 			CodebasePath: codebase.Path,
-			FilePath:     path,
+			FilePath:     strings.TrimSpace(path),
 		})
 	}
 
