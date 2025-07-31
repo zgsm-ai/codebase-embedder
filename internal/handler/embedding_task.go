@@ -34,7 +34,7 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		}
 
 		// 解析并获取RequestId（可选参数）
-		req.RequestId = r.Header.Get("RequestId")
+		req.RequestId = r.Header.Get("X-Request-ID")
 		if req.RequestId != "" {
 			fmt.Printf("Received RequestId: %s\n", req.RequestId)
 		}
