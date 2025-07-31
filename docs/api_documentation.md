@@ -271,8 +271,7 @@ HTTP/1.1 404 Not Found
 | clientId | string | 是 | 无 | 客户端唯一标识（如MAC地址） | "user_machine_id" |
 | codebasePath | string | 是 | 无 | 项目绝对路径 | "/absolute/path/to/project" |
 | codebaseName | string | 是 | 无 | 项目名称 | "project_name" |
-| chunkNumber | int | 否 | 0 | 当前分片编号（从0开始） | 0 |
-| totalChunks | int | 否 | 1 | 分片总数 | 1 |
+| syncId | string | 是 | 无 | 上传接口的RequestId | "xxxxxxx-xxxxxxxxx-xxxxx" |
 
 **请求示例**：
 ```json

@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"fmt"
+
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -26,23 +27,25 @@ func NewStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *StatusLogi
 func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileStatusResponseData, error) {
 	// 首先从Redis获取状态
 	statusManager := l.svcCtx.StatusManager
-	redisStatus, err := statusManager.GetFileStatus(l.ctx, req.ClientId, req.CodebasePath, req.CodebaseName)
+
+	// 使用用户通过接口传入的SyncId作为键查询状态
+	requestId := req.SyncId
+
+	redisStatus, err := statusManager.GetFileStatus(l.ctx, requestId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status from redis: %w", err)
 	}
 
 	logx.Infof("StatusLogic GetFileStatus: %+v", redisStatus)
-	
+
 	// 如果Redis中有状态，直接返回
 	if redisStatus != nil {
 		return redisStatus, nil
 	}
-	
-	
 
 	// 如果没有找到记录，返回初始状态
 	return &types.FileStatusResponseData{
-		Process:      "pending",
+		Process:       "pending",
 		TotalProgress: 0,
 		FileList: []types.FileStatusItem{
 			{Path: req.CodebasePath, Status: "pending"},
@@ -71,7 +74,7 @@ func (l *StatusLogic) calculateProgress(status string, processed, total int) int
 	if total == 0 {
 		return 0
 	}
-	
+
 	switch status {
 	case "completed":
 		return 100

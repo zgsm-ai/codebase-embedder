@@ -58,15 +58,14 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 
 		for path, _ := range t.params.Files {
 			fileStatusItem := types.FileStatusItem{
-				Path:   path,  // 使用当前处理的文件路径，而不是codebasePath
+				Path:   path, // 使用当前处理的文件路径，而不是codebasePath
 				Status: "processing",
 			}
 			fileStatusItems = append(fileStatusItems, fileStatusItem)
 		}
 
 		// 更新Redis中的处理状态为"processing"
-		// 使用代码库路径作为处理中的路径标识
-		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
 			func(status *types.FileStatusResponseData) {
 				status.Process = "processing"
 				status.TotalProgress = 0
@@ -89,7 +88,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 						return nil
 					}
 					atomic.AddInt32(&t.failedFileCnt, 1)
-					
+
 					return err
 				}
 				mu.Lock()
@@ -159,13 +158,13 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		if t.failedFileCnt > 0 {
 			finalStatus = "failed"
 		}
-		// 使用代码库路径作为最终状态的路径标识
-		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.ClientId, t.params.CodebasePath, t.params.CodebaseName,
+		// 更新最终状态
+		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
 			func(status *types.FileStatusResponseData) {
 				status.Process = finalStatus
 				status.TotalProgress = 100
 				status.FileList = fileStatusItems
-				// 遍历 FileList，将所有状态为 "processing" 的文件标记为 "completed"
+				// 遍历 FileList，将所有状态为 "processing" 的文件标记为最终状态
 				for i := range status.FileList {
 					if status.FileList[i].Status == "processing" {
 						status.FileList[i].Status = finalStatus

@@ -11,8 +11,6 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
-
-
 func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.IndexTaskRequest
@@ -29,13 +27,13 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		req.UploadToken = r.FormValue("uploadToken")
 		req.ExtraMetadata = r.FormValue("extraMetadata")
 		req.FileTotals = 1 // 默认值
-		
+
 		// 解析fileTotals字段
 		if fileTotals := r.FormValue("fileTotals"); fileTotals != "" {
 			fmt.Sscanf(fileTotals, "%d", &req.FileTotals)
 		}
 
-		// 解析并打印RequestId（可选参数）
+		// 解析并获取RequestId（可选参数）
 		req.RequestId = r.Header.Get("RequestId")
 		if req.RequestId != "" {
 			fmt.Printf("Received RequestId: %s\n", req.RequestId)
@@ -54,7 +52,6 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			response.Error(w, errors.New("missing required parameter: codebaseName"))
 			return
 		}
-
 
 		l := logic.NewTaskLogic(r.Context(), svcCtx)
 		resp, err := l.SubmitTask(&req, r)

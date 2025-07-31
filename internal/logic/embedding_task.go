@@ -5,6 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
+	"io"
+	"net/http"
+	"os"
+	"strings"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
@@ -12,13 +18,9 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
 	"gorm.io/gorm"
-	"io"
-	"net/http"
-	"os"
-	"strings"
 
-	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zeromicro/go-zero/core/logx"
+	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 )
 
 type TaskLogic struct {
@@ -40,7 +42,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	clientPath := req.CodebasePath
 	codebaseName := req.CodebaseName
 	uploadToken := req.UploadToken
-	
+
 	l.Logger.Debugf("SubmitTask request: %s, %s, %s, uploadToken: %s", clientId, clientPath, codebaseName, uploadToken)
 
 	// TODO: 验证uploadToken的有效性
@@ -57,7 +59,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 创建索引任务
 	// 查询最新的同步
 	// latestSync, err := l.svcCtx.Querier.SyncHistory.FindLatest(l.ctx, codebase.ID)
@@ -127,7 +129,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	fileCount := 0
 	hasShenmaSync := false
 	shenmaSyncFiles := make(map[string][]byte)
-	
+
 	// 首先检查是否存在.shenma_sync文件夹
 	for _, zipFile := range zipReader.File {
 		if strings.HasPrefix(zipFile.Name, ".shenma_sync/") {
@@ -135,12 +137,12 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 			break
 		}
 	}
-	
+
 	// 如果没有.shenma_sync文件夹，返回错误
 	if !hasShenmaSync {
 		return nil, fmt.Errorf("ZIP文件中必须包含.shenma_sync文件夹")
 	}
-	
+
 	// 遍历ZIP中的所有文件
 	for _, zipFile := range zipReader.File {
 		// 跳过目录
@@ -164,13 +166,13 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 		// 存储文件内容到映射
 		files[zipFile.Name] = content
-		
+
 		// 如果是.shenma_sync文件夹中的文件，额外存储并打印
 		if strings.HasPrefix(zipFile.Name, ".shenma_sync/") {
 			shenmaSyncFiles[zipFile.Name] = content
 			l.Logger.Infof("读取.shenma_sync文件夹中的文件: %s", zipFile.Name)
 			l.Logger.Infof("文件内容:\n%s", string(content))
-			
+
 			// 额外输出到控制台，确保用户能看到
 			fmt.Printf("=== .shenma_sync文件内容 ===\n")
 			fmt.Printf("文件名: %s\n", zipFile.Name)
@@ -179,7 +181,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 			fmt.Printf("========================\n\n")
 		}
 	}
-	
+
 	// 打印.shenma_sync文件夹中的文件摘要
 	l.Logger.Infof("共找到 %d 个.shenma_sync文件夹中的文件", len(shenmaSyncFiles))
 	for fileName := range shenmaSyncFiles {
@@ -193,18 +195,25 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	if err != nil {
 		return nil, fmt.Errorf("failed to update codebase file count: %w", err)
 	}
-	
+
 	l.Logger.Infof("Updated codebase %d with file_count: %d, total_size: %d", codebase.ID, fileCount, req.FileTotals)
+
+	// 使用外部传入的requestId，如果没有则生成一个
+	requestId := req.RequestId
+	if requestId == "" {
+		requestId = fmt.Sprintf("%s-%s-%d", clientId, codebase.Name, time.Now().Unix())
+	}
 
 	task := &job.IndexTask{
 		SvcCtx:  l.svcCtx,
 		LockMux: mux,
 		Params: &job.IndexTaskParams{
 			// SyncID:       latestSync.ID,
-			ClientId: clientId,
+			ClientId:     clientId,
 			CodebaseID:   codebase.ID,
 			CodebasePath: codebase.Path,
 			CodebaseName: codebase.Name,
+			RequestId:    requestId,
 			Files:        files,
 		},
 	}
@@ -223,14 +232,15 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 	// 初始化Redis中的文件处理状态
 	initialStatus := &types.FileStatusResponseData{
-		Process:      "pending",
+		Process:       "pending",
 		TotalProgress: 0,
-		FileList:     []types.FileStatusItem{},
+		FileList:      []types.FileStatusItem{},
 	}
 
-	err = l.svcCtx.StatusManager.SetFileStatus(ctx, req.ClientId, req.CodebasePath, req.CodebaseName, initialStatus)
+	// 使用RequestId作为键存储状态
+	err = l.svcCtx.StatusManager.SetFileStatusByRequestId(ctx, req.RequestId, initialStatus)
 	if err != nil {
-		l.Logger.Errorf("failed to set initial file status in redis: %v", err)
+		l.Logger.Errorf("failed to set initial file status in redis with requestId %s: %v", req.RequestId, err)
 		// 不返回错误，继续处理
 	}
 

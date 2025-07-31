@@ -3,11 +3,12 @@ package job
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
-	"sync"
-	"time"
 )
 
 type IndexTask struct {
@@ -22,6 +23,7 @@ type IndexTaskParams struct {
 	CodebasePath string // 代码库路径
 	CodebaseName string // 代码库名字
 	ClientId     string // 客户端ID
+	RequestId    string // 请求ID，用于状态管理
 	Files        map[string][]byte
 }
 
