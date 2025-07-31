@@ -11,25 +11,6 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
-// SubmitTask 处理任务提交请求
-// @Summary 提交任务
-// func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		var req types.IndexTaskRequest
-// 		if err := httpx.Parse(r, &req); err != nil {
-// 			response.Error(w, err)
-// 			return
-// 		}
-
-// 		l := logic.NewTaskLogic(r.Context(), svcCtx)
-// 		resp, err := l.SubmitTask(&req, r)
-// 		if err != nil {
-// 			response.Error(w, err)
-// 		} else {
-// 			response.Json(w, resp)
-// 		}
-// 	}
-// }
 
 
 func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
@@ -45,21 +26,19 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		req.ClientId = r.FormValue("clientId")
 		req.CodebasePath = r.FormValue("codebasePath")
 		req.CodebaseName = r.FormValue("codebaseName")
-		// req.UploadToken = r.FormValue("uploadToken")
-		req.UploadToken = ""
+		req.UploadToken = r.FormValue("uploadToken")
 		req.ExtraMetadata = r.FormValue("extraMetadata")
+		req.FileTotals = 1 // 默认值
 		
-		// 解析可选的整数字段
-		if chunkNum := r.FormValue("chunkNumber"); chunkNum != "" {
-			fmt.Sscanf(chunkNum, "%d", &req.ChunkNumber)
-		}
-		if totalChunks := r.FormValue("totalChunks"); totalChunks != "" {
-			fmt.Sscanf(totalChunks, "%d", &req.TotalChunks)
-		}
+		// 解析fileTotals字段
 		if fileTotals := r.FormValue("fileTotals"); fileTotals != "" {
 			fmt.Sscanf(fileTotals, "%d", &req.FileTotals)
-		} else {
-			req.FileTotals = 1 // 默认值
+		}
+
+		// 解析并打印RequestId（可选参数）
+		req.RequestId = r.Header.Get("RequestId")
+		if req.RequestId != "" {
+			fmt.Printf("Received RequestId: %s\n", req.RequestId)
 		}
 
 		// 验证必填字段

@@ -46,14 +46,16 @@ Codebase Embedder 提供代码库嵌入管理、语义搜索和项目摘要功�
 | codebaseName | string | 是 | 无 | 项目名称 | "my_project" |
 | uploadToken | string | 否 | "" | 上传令牌 | "upload_token_123" |
 | extraMetadata | string | 否 | "" | 额外元数据（JSON字符串） | '{"version": "1.0", "author": "dev"}' |
-| chunkNumber | int | 否 | 0 | 当前分片编号（从0开始） | 0 |
-| totalChunks | int | 否 | 1 | 分片总数 | 1 |
 | fileTotals | int | 是 | 无 | 上传工程文件总数 | 42 |
 
 **请求示例**：
 ```http
 POST /codebase-embedder/api/v1/embeddings
+
+RequestId: xxxxxxxxxxxx
 Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+
 
 ------WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="clientId"

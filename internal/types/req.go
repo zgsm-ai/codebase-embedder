@@ -161,14 +161,13 @@ type IndexSummaryResonseData struct {
 }
 
 type IndexTaskRequest struct {
-	ClientId     string            `json:"clientId"`     // 客户端id
-	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
-	CodebaseName string            `json:"codebaseName"` // 项目名
-	UploadToken  string            `json:"uploadToken,optional"`  // 上传令牌
-	ExtraMetadata string           `json:"extraMetadata,optional"` // 额外元数据
-	ChunkNumber   int              `json:"chunkNumber,optional"`   // 当前分片
-	TotalChunks   int              `json:"totalChunks,optional"`   // 分片总数
-	FileTotals    int              `json:"fileTotals"`             // 上传工程文件总数
+	ClientId      string `json:"clientId"`               // 客户端唯一标识（如MAC地址）
+	CodebasePath  string `json:"codebasePath"`           // 项目绝对路径
+	CodebaseName  string `json:"codebaseName"`           // 项目名称
+	UploadToken   string `json:"uploadToken,optional"`   // 上传令牌
+	ExtraMetadata string `json:"extraMetadata,optional"` // 额外元数据（JSON字符串）
+	FileTotals    int    `json:"fileTotals"`             // 上传工程文件总数
+    RequestId     string `json:"requestId,optional"`     // 请求ID，用于跟踪和调试
 }
 
 type IndexTaskResponseData struct {
