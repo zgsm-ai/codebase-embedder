@@ -428,19 +428,195 @@ func generateTestCodebase() *model.Codebase {
 | 监控 | Prometheus + Grafana | 最新版 | 云原生标准监控方案 |
 | 限流 | golang.org/x/time/rate | 标准库 | 官方支持，稳定可靠 |
 
-## 12. 后续扩展计划
+## 12. 提交嵌入任务技术设计
 
-### 12.1 功能扩展
-- 支持更多查询维度（时间范围、文件类型等）
-- 支持批量查询
-- 支持数据导出功能
+### 12.1 任务提交流程
 
-### 12.2 性能优化
-- 引入Redis缓存热点数据
-- 支持异步查询和结果推送
-- 实现查询结果分页
+#### 12.1.1 整体流程图
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Storage
+    participant Queue
+    participant Worker
+    
+    Client->>API: POST /embeddings (multipart/form-data)
+    API->>API: 验证参数和Token
+    API->>Storage: 查找/创建codebase记录
+    API->>Storage: 获取分布式锁
+    API->>Storage: 保存ZIP文件到临时目录
+    API->>Storage: 解压并验证ZIP结构
+    API->>Storage: 更新codebase统计信息
+    API->>Queue: 提交异步嵌入任务
+    API->>Storage: 初始化Redis任务状态
+    API->>Client: 返回taskId
+    Queue->>Worker: 触发任务执行
+    Worker->>Worker: 执行嵌入和图构建
+    Worker->>Storage: 更新任务状态
+```
 
-### 12.3 安全增强
-- 支持API Key认证
-- 实现细粒度权限控制
-- 支持数据脱敏配置
+#### 12.1.2 关键处理步骤
+
+**1. 请求验证阶段**
+- 必填参数验证：`clientId`, `codebasePath`, `codebaseName`, `fileTotals`
+- 文件验证：必须是ZIP格式，且必须包含`.shenma_sync/`文件夹
+- Token验证：当前调试阶段使用万能令牌"xxxx"
+
+**2. 文件处理阶段**
+- 临时文件存储：上传的ZIP文件保存到系统临时目录
+- 文件结构验证：检查ZIP文件中必须存在`.shenma_sync/`文件夹
+- 文件内容读取：分别读取普通代码文件和`.shenma_sync/`中的元数据文件
+- 统计信息更新：更新codebase的file_count和total_size字段
+
+**3. 任务调度阶段**
+- 分布式锁：使用Redis分布式锁防止重复处理，锁超时时间可配置
+- 异步任务：通过任务池提交异步嵌入任务
+- 状态管理：使用RequestId作为键在Redis中存储任务状态
+
+### 12.2 接口设计
+
+#### 12.2.1 请求规范
+- **端点**: `POST /codebase-embedder/api/v1/embeddings`
+- **内容类型**: `multipart/form-data`
+- **最大文件大小**: 32MB
+
+#### 12.2.2 请求参数
+| 参数名称 | 类型 | 位置 | 必填 | 描述 | 验证规则 |
+|----------|------|------|------|------|----------|
+| clientId | string | form-data | 是 | 客户端唯一标识 | 非空字符串 |
+| codebasePath | string | form-data | 是 | 代码库绝对路径 | 非空字符串 |
+| codebaseName | string | form-data | 是 | 代码库名称 | 非空字符串 |
+| uploadToken | string | form-data | 否 | 上传令牌 | 当前调试阶段为"xxxx" |
+| fileTotals | int | form-data | 是 | 文件总数 | 正整数 |
+| file | file | form-data | 是 | ZIP压缩文件 | 必须为.zip格式 |
+| extraMetadata | string | form-data | 否 | 额外元数据 | JSON格式字符串 |
+| X-Request-ID | string | header | 否 | 请求ID | 用于状态跟踪 |
+
+#### 12.2.3 ZIP文件结构要求
+```
+project.zip
+├── .shenma_sync/          # 必须存在
+│   ├── config.json        # 同步配置
+│   └── metadata.json      # 项目元数据
+├── src/                   # 源代码目录
+├── README.md              # 项目文档
+└── ...                    # 其他项目文件
+```
+
+### 12.3 任务处理机制
+
+#### 12.3.1 分布式锁设计
+- **锁键格式**: `codebase_embedder:task:{codebaseId}`
+- **锁超时**: 可配置，默认5分钟
+- **锁实现**: 基于Redis的Redsync库
+
+#### 12.3.2 异步任务结构
+```go
+type IndexTask struct {
+    SvcCtx  *svc.ServiceContext
+    LockMux *redsync.Mutex
+    Params  *IndexTaskParams
+}
+
+type IndexTaskParams struct {
+    CodebaseID   int32              // 代码库ID
+    CodebasePath string            // 代码库路径
+    CodebaseName string            // 代码库名称
+    ClientId     string            // 客户端ID
+    RequestId    string            // 请求ID
+    Files        map[string][]byte // 文件内容映射
+}
+```
+
+#### 12.3.3 任务执行流程
+1. **解锁保证**: 任务完成后自动释放分布式锁
+2. **并发处理**: 使用WaitGroup管理嵌入任务和图构建任务
+3. **超时控制**: 任务超时时间可配置
+4. **错误处理**: 完整的错误捕获和日志记录
+
+### 12.4 状态管理
+
+#### 12.4.1 Redis状态存储
+- **键格式**: 使用RequestId作为状态键
+- **初始状态**: `{"process": "pending", "totalProgress": 0, "fileList": []}`
+- **状态更新**: 任务执行过程中实时更新处理进度
+
+#### 12.4.2 状态查询接口
+- **端点**: `GET /codebase-embedder/api/v1/status/{requestId}`
+- **轮询机制**: 客户端可通过轮询获取实时处理状态
+
+### 12.5 错误处理机制
+
+#### 12.5.1 错误分类
+| 错误类型 | HTTP状态码 | 错误场景 | 处理策略 |
+|----------|------------|----------|----------|
+| 参数错误 | 400 | 缺少必填参数 | 返回具体缺失参数信息 |
+| 文件格式错误 | 400 | ZIP格式不正确或缺少.shenma_sync | 返回具体格式要求 |
+| 权限错误 | 403 | Token验证失败 | 返回权限不足信息 |
+| 锁冲突 | 409 | 分布式锁获取失败 | 返回任务正在处理中 |
+| 服务器错误 | 500 | 文件处理或数据库错误 | 记录日志，返回通用错误 |
+
+#### 12.5.2 错误响应格式
+```json
+{
+  "code": 400,
+  "message": "Invalid parameters: missing required field 'clientId'",
+  "data": null
+}
+```
+
+### 12.6 性能优化
+
+#### 12.6.1 文件处理优化
+- **内存管理**: 使用临时文件避免内存溢出
+- **并发读取**: ZIP文件并发读取多个文件
+- **垃圾回收**: 及时清理临时文件和释放内存
+
+#### 12.6.2 任务调度优化
+- **连接池**: 复用数据库连接
+- **批处理**: 批量处理文件减少数据库操作
+- **异步化**: 非阻塞式任务提交
+
+### 12.7 安全设计
+
+#### 12.7.1 文件安全
+- **文件类型检查**: 严格限制上传文件类型为ZIP
+- **文件大小限制**: 32MB最大限制防止DoS攻击
+- **路径遍历防护**: 防止ZIP文件中的路径遍历攻击
+
+#### 12.7.2 数据安全
+- **临时文件清理**: 自动清理上传的临时文件
+- **敏感信息过滤**: 过滤代码中的敏感信息
+- **访问控制**: 基于clientId的权限验证
+
+### 12.8 监控与日志
+
+#### 12.8.1 关键指标监控
+- **任务提交成功率**: 成功提交任务的比例
+- **平均处理时间**: 从提交到完成的平均时间
+- **错误率**: 各类错误的分布情况
+- **文件处理统计**: 处理的文件数量和大小分布
+
+#### 12.8.2 日志记录
+- **请求日志**: 记录所有任务提交请求
+- **处理日志**: 记录任务执行的详细步骤
+- **错误日志**: 记录所有错误和异常信息
+- **性能日志**: 记录关键操作的执行时间
+
+## 13. 后续扩展计划
+
+### 13.1 功能扩展
+- 支持更多代码库格式（Git仓库直接导入）
+- 支持增量更新（只处理变更的文件）
+- 支持代码库版本管理
+
+### 13.2 性能优化
+- 支持大文件分片上传
+- 实现断点续传功能
+- 引入CDN加速文件上传
+
+### 13.3 安全增强
+- 实现OAuth2.0认证
+- 支持API访问频率限制
+- 实现代码库访问审计日志

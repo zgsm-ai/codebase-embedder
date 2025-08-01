@@ -23,24 +23,45 @@ Codebase Embedder 是一个代码库嵌入管理系统，旨在为开发人员�
 ### 2.1 提交嵌入任务 (POST /codebase-embedder/api/v1/embeddings)
 
 **功能描述**：
-提交代码库嵌入任务，将本地代码库上传并转换为向量表示。系统会解析代码库中的文件，提取代码结构和语义信息，生成向量嵌入。
+提交代码库嵌入任务，将本地代码库上传并转换为向量表示。系统会解析代码库中的文件，提取代码结构和语义信息，生成向量嵌入。上传的ZIP文件必须包含`.shenma_sync`文件夹，该文件夹用于存储同步相关的元数据。
 
-**请求参数**：
-- `clientId` (string): 客户端唯一标识，用于区分不同用户的代码库
-- `projectPath` (string): 项目在客户端的绝对路径
-- `codebaseName` (string): 代码库名称
-- `uploadToken` (string): 上传令牌，用于验证上传权限
-- `fileTotals` (number): 上传工程文件总数
-- `file` (file): 代码库的ZIP压缩文件
+**请求参数**（form-data格式）：
+- `clientId` (string, 必填): 客户端唯一标识，用于区分不同用户的代码库
+- `codebasePath` (string, 必填): 项目在客户端的绝对路径
+- `codebaseName` (string, 必填): 代码库名称
+- `uploadToken` (string, 可选): 上传令牌，用于验证上传权限（当前调试阶段使用"xxxx"作为万能令牌）
+- `fileTotals` (number, 必填): 上传工程文件总数
+- `file` (file, 必填): 代码库的ZIP压缩文件，必须包含`.shenma_sync`文件夹
+- `extraMetadata` (string, 可选): 额外元数据（JSON字符串格式）
+- `X-Request-ID` (header, 可选): 请求ID，用于跟踪和调试，如果没有提供则系统会自动生成
 
 **处理流程**：
-1. 验证客户端身份和上传令牌
-2. 在数据库中查找或创建代码库记录
-3. 获取分布式锁，防止重复处理
-4. 解压上传的ZIP文件，读取所有代码文件内容
-5. 更新代码库的文件数量和总大小信息
-6. 将嵌入任务提交到任务队列进行异步处理
-7. 初始化Redis中的文件处理状态
+1. **参数验证**：验证必填字段（clientId、codebasePath、codebaseName）
+2. **令牌验证**：验证uploadToken的有效性（当前调试阶段跳过验证）
+3. **代码库初始化**：在数据库中查找或创建代码库记录，使用clientId和codebasePath作为唯一标识
+4. **分布式锁获取**：获取基于codebaseID的分布式锁，防止重复处理，锁超时时间可配置
+5. **ZIP文件处理**：
+   - 验证上传文件为ZIP格式
+   - 创建临时文件存储ZIP内容
+   - 检查ZIP文件中必须包含`.shenma_sync`文件夹
+   - 遍历ZIP文件，读取所有代码文件内容（跳过`.shenma_sync`文件夹中的文件）
+   - 读取`.shenma_sync`文件夹中的元数据文件用于任务管理
+6. **数据库更新**：更新代码库的文件数量（file_count）和总大小（total_size）信息
+7. **任务提交**：将嵌入任务提交到异步任务队列进行处理
+8. **状态初始化**：在Redis中使用requestId作为键初始化文件处理状态
+
+**ZIP文件结构要求**：
+```
+project.zip
+├── .shenma_sync/          # 必须存在的文件夹
+│   ├── sync_metadata.json # 同步元数据文件
+│   └── ...               # 其他同步相关文件
+├── src/
+│   ├── main.js
+│   └── utils.js
+├── package.json
+└── ...                   # 其他项目文件
+```
 
 **成功响应**：
 ```json
@@ -48,6 +69,17 @@ Codebase Embedder 是一个代码库嵌入管理系统，旨在为开发人员�
   "taskId": 12345
 }
 ```
+
+**错误响应**：
+- 400 Bad Request：缺少必填参数或ZIP文件格式不正确
+- 409 Conflict：无法获取分布式锁，任务正在处理中
+- 422 Unprocessable Entity：ZIP文件中缺少必需的`.shenma_sync`文件夹
+
+**注意事项**：
+- 上传的ZIP文件大小限制为32MB（可在配置中调整）
+- 系统会自动跳过`.shenma_sync`文件夹中的文件，这些文件仅用于任务管理
+- 任务处理状态可通过文件状态查询接口进行监控
+- 每个代码库（由clientId和codebasePath唯一标识）同时只能有一个处理任务
 
 ### 2.2 删除嵌入数据 (DELETE /codebase-embedder/api/v1/embeddings)
 
