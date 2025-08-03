@@ -46,15 +46,31 @@ Codebase Embedder 是一个代码库嵌入管理系统，旨在为开发人员�
    - 检查ZIP文件中必须包含`.shenma_sync`文件夹
    - 遍历ZIP文件，读取所有代码文件内容（跳过`.shenma_sync`文件夹中的文件）
    - 读取`.shenma_sync`文件夹中的元数据文件用于任务管理
-6. **数据库更新**：更新代码库的文件数量（file_count）和总大小（total_size）信息
-7. **任务提交**：将嵌入任务提交到异步任务队列进行处理
-8. **状态初始化**：在Redis中使用requestId作为键初始化文件处理状态
+   - 同步元数据数据格式如下,文件名为时间戳：
+   ```json
+    {
+    "clientId": ""
+    "codebasePath": "",
+    "codebaseName": "",
+    "extraMetadata":  {},
+    "fileList":  {
+        "src/main/java/main.java": "add" , //add  modify   delete
+      },
+    "timestamp": 12334234233
+    }
+    ```
+
+6. **检查文件**：
+   - 验证同步元数据文件中add和modify里面文件是否和解压后文件匹配，并打印匹配结果
+7. **数据库更新**：更新代码库的文件数量（file_count）和总大小（total_size）信息
+8. **任务提交**：将嵌入任务提交到异步任务队列进行处理
+9. **状态初始化**：在Redis中使用requestId作为键初始化文件处理状态
 
 **ZIP文件结构要求**：
 ```
 project.zip
 ├── .shenma_sync/          # 必须存在的文件夹
-│   ├── sync_metadata.json # 同步元数据文件
+│   ├── 20250728213645    # 同步元数据文件,文件名为时间戳
 │   └── ...               # 其他同步相关文件
 ├── src/
 │   ├── main.js

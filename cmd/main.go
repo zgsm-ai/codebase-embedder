@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"flag"
+	"net/http"
+
 	"github.com/zeromicro/go-zero/core/conf"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/rest"
@@ -11,7 +13,6 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/migrations"
-	"net/http"
 )
 
 var configFile = flag.String("f", "etc/conf.yaml", "the config file")
@@ -20,7 +21,22 @@ func main() {
 	flag.Parse()
 
 	var c config.Config
-	conf.MustLoad(*configFile, &c, conf.UseEnv())
+
+	// 添加调试日志来验证配置加载
+	logx.Infof("尝试加载配置文件: %s", *configFile)
+
+	// 验证配置加载前的状态
+	logx.Infof("配置加载前，Validation 字段零值: %+v", c.Validation)
+
+	// 尝试加载配置，添加错误处理
+	err := conf.Load(*configFile, &c, conf.UseEnv())
+	if err != nil {
+		logx.Errorf("配置加载失败: %v", err)
+		panic(err)
+	}
+	logx.Infof("配置文件加载成功，Validation 配置: %+v", c.Validation)
+	logx.Infof("Validation.Enabled: %v", c.Validation.Enabled)
+	logx.Infof("Validation.CheckContent: %v", c.Validation.CheckContent)
 
 	logx.MustSetup(c.Log)
 	logx.DisableStat()

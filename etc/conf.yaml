@@ -79,3 +79,11 @@ Log:
   KeepDays: 15
   MaxSize: 100 # MB per file, take affect when Rotation is size.
   Rotation: daily # split by day or size
+
+Validation:
+  enabled: true
+  check_content: true
+  fail_on_mismatch: false
+  log_level: "info"
+  max_concurrency: 5
+  skip_patterns: []

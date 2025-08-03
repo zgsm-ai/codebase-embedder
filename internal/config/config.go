@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+
 	"github.com/zeromicro/go-zero/rest"
 )
 
@@ -15,6 +16,7 @@ type Config struct {
 	IndexTask   IndexTaskConf
 	VectorStore VectorStoreConf
 	Cleaner     CleanerConf
+	Validation  ValidationConfig
 }
 
 // Validate 实现 Validator 接口

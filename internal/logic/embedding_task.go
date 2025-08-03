@@ -3,6 +3,7 @@ package logic
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -248,6 +249,9 @@ func (l *TaskLogic) processShenmaSyncFile(zipFile *zip.File, shenmaSyncFiles map
 	l.Logger.Infof("读取.shenma_sync文件夹中的文件: %s", zipFile.Name)
 	l.Logger.Infof("文件内容:\n%s", string(content))
 
+	// 解析JSON格式的.shenma_sync文件内容并提取fileList
+	l.extractFileListFromShenmaSync(content, zipFile.Name)
+
 	// 额外输出到控制台，确保用户能看到
 	fmt.Printf("=== .shenma_sync文件内容 ===\n")
 	fmt.Printf("文件名: %s\n", zipFile.Name)
@@ -256,6 +260,27 @@ func (l *TaskLogic) processShenmaSyncFile(zipFile *zip.File, shenmaSyncFiles map
 	fmt.Printf("========================\n\n")
 
 	return nil
+}
+
+// extractFileListFromShenmaSync 从.shenma_sync文件内容中提取fileList
+func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName string) {
+	// 解析JSON内容
+	var metadata struct {
+		FileList map[string]string `json:"fileList"`
+	}
+
+	if err := json.Unmarshal(content, &metadata); err != nil {
+		l.Logger.Errorf("解析.shenma_sync文件失败 %s: %v", fileName, err)
+		return
+	}
+
+	l.Logger.Infof("从 %s 中提取到 %d 个文件:", fileName, len(metadata.FileList))
+
+	// 打印fileList中的文件
+	for filePath, status := range metadata.FileList {
+		l.Logger.Infof("  文件: %s, 状态: %s", filePath, status)
+		fmt.Printf("  文件: %s, 状态: %s\n", filePath, status)
+	}
 }
 
 // processRegularFile 处理常规文件
