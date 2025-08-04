@@ -27,8 +27,9 @@ import (
 
 type TaskLogic struct {
 	logx.Logger
-	ctx    context.Context
-	svcCtx *svc.ServiceContext
+	ctx          context.Context
+	svcCtx       *svc.ServiceContext
+	syncMetadata *types.SyncMetadata
 }
 
 func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
@@ -36,6 +37,14 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 		Logger: logx.WithContext(ctx),
 		ctx:    ctx,
 		svcCtx: svcCtx,
+		syncMetadata: &types.SyncMetadata{
+			ClientId:      "",
+			CodebasePath:  "",
+			CodebaseName:  "",
+			ExtraMetadata: make(map[string]interface{}),
+			FileList:      make(map[string]string),
+			Timestamp:     0,
+		},
 	}
 }
 
@@ -70,7 +79,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	defer l.svcCtx.DistLock.Unlock(ctx, mux)
 
 	// 处理上传的ZIP文件
-	files, fileCount, err := l.processUploadedZipFile(r)
+	files, fileCount, metadata, err := l.processUploadedZipFile(r)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +93,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	requestId := l.generateRequestId(req.RequestId, clientId, codebase.Name)
 
 	// 提交索引任务
-	if err := l.submitIndexTask(ctx, codebase, clientId, requestId, mux, files); err != nil {
+	if err := l.submitIndexTask(ctx, codebase, clientId, requestId, mux, files, metadata); err != nil {
 		return nil, err
 	}
 
@@ -122,24 +131,24 @@ func (l *TaskLogic) acquireTaskLock(ctx context.Context, codebaseID int32) (*red
 }
 
 // processUploadedZipFile 处理上传的ZIP文件
-func (l *TaskLogic) processUploadedZipFile(r *http.Request) (map[string][]byte, int, error) {
+func (l *TaskLogic) processUploadedZipFile(r *http.Request) (map[string][]byte, int, *types.SyncMetadata, error) {
 	// 解析multipart表单
 	err := r.ParseMultipartForm(32 << 20) // 32MB max memory
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to parse multipart form: %w", err)
+		return nil, 0, nil, fmt.Errorf("failed to parse multipart form: %w", err)
 	}
 	defer r.MultipartForm.RemoveAll()
 
 	// 从表单中获取ZIP文件
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get file from form: %w", err)
+		return nil, 0, nil, fmt.Errorf("failed to get file from form: %w", err)
 	}
 	defer file.Close()
 
 	// 验证文件是否为ZIP格式
 	if !strings.HasSuffix(header.Filename, ".zip") {
-		return nil, 0, fmt.Errorf("uploaded file must be a ZIP file, got: %s", header.Filename)
+		return nil, 0, nil, fmt.Errorf("uploaded file must be a ZIP file, got: %s", header.Filename)
 	}
 
 	// 处理ZIP文件内容
@@ -147,43 +156,48 @@ func (l *TaskLogic) processUploadedZipFile(r *http.Request) (map[string][]byte, 
 }
 
 // extractZipFiles 从ZIP文件中提取文件内容
-func (l *TaskLogic) extractZipFiles(file io.Reader) (map[string][]byte, int, error) {
+func (l *TaskLogic) extractZipFiles(file io.Reader) (map[string][]byte, int, *types.SyncMetadata, error) {
 	files := make(map[string][]byte)
 
 	// 创建临时文件存储上传的ZIP
 	tempFile, err := os.CreateTemp("", "upload-*.zip")
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create temp file: %w", err)
+		return nil, 0, nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	defer os.Remove(tempPath) // 清理临时文件
+	// defer os.Remove(tempPath) // 清理临时文件
+
+	tracer.WithTrace(l.ctx).Infof("extractZipFiles tempPath %s", tempPath)
 
 	// 将上传的ZIP内容复制到临时文件
 	_, err = io.Copy(tempFile, file)
 	tempFile.Close() // 关闭文件以便后续读取
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to copy file to temp location: %w", err)
+		return nil, 0, nil, fmt.Errorf("failed to copy file to temp location: %w", err)
 	}
 
 	// 打开ZIP文件进行读取
 	zipReader, err := zip.OpenReader(tempPath)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to open ZIP file: %w", err)
+		return nil, 0, nil, fmt.Errorf("failed to open ZIP file: %w", err)
 	}
 	defer zipReader.Close()
 
 	// 检查是否存在.shenma_sync文件夹
 	if !l.hasShenmaSyncFolder(zipReader) {
-		return nil, 0, fmt.Errorf("ZIP文件中必须包含.shenma_sync文件夹")
+		return nil, 0, nil, fmt.Errorf("ZIP文件中必须包含.shenma_sync文件夹")
 	}
 
 	// 提取文件内容
 	fileCount, err := l.extractFilesFromZip(zipReader, files)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
-	return files, fileCount, nil
+	// 获取元数据
+	metadata := l.getSyncMetadata()
+
+	return files, fileCount, metadata, nil
 }
 
 // hasShenmaSyncFolder 检查ZIP中是否存在.shenma_sync文件夹
@@ -265,9 +279,9 @@ func (l *TaskLogic) processShenmaSyncFile(zipFile *zip.File, shenmaSyncFiles map
 // extractFileListFromShenmaSync 从.shenma_sync文件内容中提取fileList
 func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName string) {
 	// 解析JSON内容
-	var metadata struct {
-		FileList map[string]string `json:"fileList"`
-	}
+	var metadata types.SyncMetadata
+	metadata.FileList = make(map[string]string)
+	metadata.ExtraMetadata = make(map[string]interface{})
 
 	if err := json.Unmarshal(content, &metadata); err != nil {
 		l.Logger.Errorf("解析.shenma_sync文件失败 %s: %v", fileName, err)
@@ -281,6 +295,9 @@ func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName strin
 		l.Logger.Infof("  文件: %s, 状态: %s", filePath, status)
 		fmt.Printf("  文件: %s, 状态: %s\n", filePath, status)
 	}
+
+	// 存储提取的元数据
+	l.syncMetadata = &metadata
 }
 
 // processRegularFile 处理常规文件
@@ -324,7 +341,7 @@ func (l *TaskLogic) generateRequestId(requestId, clientId, codebaseName string) 
 }
 
 // submitIndexTask 提交索引任务
-func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, mux *redsync.Mutex, files map[string][]byte) error {
+func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, mux *redsync.Mutex, files map[string][]byte, metadata *types.SyncMetadata) error {
 	task := &job.IndexTask{
 		SvcCtx:  l.svcCtx,
 		LockMux: mux,
@@ -335,6 +352,7 @@ func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebas
 			CodebaseName: codebase.Name,
 			RequestId:    requestId,
 			Files:        files,
+			Metadata:     metadata,
 		},
 	}
 
@@ -409,4 +427,10 @@ func (l *TaskLogic) saveCodebase(clientId, clientPath, userUId, codebaseName str
 		return nil, err
 	}
 	return codebaseModel, nil
+}
+
+// getSyncMetadata 获取同步元数据
+func (l *TaskLogic) getSyncMetadata() *types.SyncMetadata {
+	// 返回从ZIP文件中提取的元数据
+	return l.syncMetadata
 }

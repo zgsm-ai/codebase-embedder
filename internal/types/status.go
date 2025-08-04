@@ -19,6 +19,7 @@ type FileStatusResponseData struct {
 
 // FileStatusItem 单个文件状态项
 type FileStatusItem struct {
-	Path   string `json:"path"`   // 文件路径
-	Status string `json:"status"` // 文件状态（如：pending/processing/complete/failed）
+	Path    string `json:"path"`    // 文件路径
+	Status  string `json:"status"`  // 文件状态（如：pending/processing/complete/failed）
+	Operate string `json:"operate"` // 文件操作类型（如：add/modify/delete）
 }

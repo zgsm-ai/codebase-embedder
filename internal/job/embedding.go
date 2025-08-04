@@ -38,6 +38,18 @@ type fileProcessResult struct {
 	path   string
 }
 
+// extractFileOperations 从同步元数据中提取文件操作类型
+func extractFileOperations(metadata *types.SyncMetadata) map[string]string {
+	operations := make(map[string]string)
+
+	// 遍历FileList，该字段存储了文件路径到操作类型的映射
+	for filePath, operation := range metadata.FileList {
+		operations[filePath] = operation
+	}
+
+	return operations
+}
+
 func (t *embeddingProcessor) Process(ctx context.Context) error {
 	tracer.WithTrace(ctx).Infof("start to execute embedding task, codebase: %s", t.params.CodebaseName)
 	start := time.Now()
@@ -56,10 +68,23 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 
 		var fileStatusItems []types.FileStatusItem
 
+		// 从参数中获取同步元数据
+		var syncMetadata *types.SyncMetadata
+		if t.params.Metadata != nil {
+			syncMetadata = t.params.Metadata
+		}
+
+		// 提取文件操作类型
+		fileOperations := make(map[string]string)
+		if syncMetadata != nil {
+			fileOperations = extractFileOperations(syncMetadata)
+		}
+
 		for path, _ := range t.params.Files {
 			fileStatusItem := types.FileStatusItem{
-				Path:   path, // 使用当前处理的文件路径，而不是codebasePath
-				Status: "processing",
+				Path:    path, // 使用当前处理的文件路径，而不是codebasePath
+				Status:  "processing",
+				Operate: fileOperations[path], // 设置操作类型
 			}
 			fileStatusItems = append(fileStatusItems, fileStatusItem)
 		}

@@ -294,11 +294,18 @@ HTTP/1.1 200 OK
     "fileList": [
         {
          "path": "src/main/java/main.java",
-         "status": "complete"
+         "status": "complete",
+         "operate": "add"
         },
         {
          "path": "src/main/java/server.java",
-         "status": "complete"
+         "status": "complete",
+         "operate": "modify"
+        },
+        {
+         "path": "src/main/java/old.java",
+         "status": "complete",
+         "operate": "delete"
         }
    ]
 }
@@ -313,6 +320,7 @@ HTTP/1.1 200 OK
 | fileList | array | 文件状态列表 |
 | fileList[].path | string | 文件相对路径 |
 | fileList[].status | string | 单个文件状态（pending/processing/complete/failed） |
+| fileList[].operate | string | 文件操作类型（add/modify/delete） |
 
 **错误响应**：
 ```json

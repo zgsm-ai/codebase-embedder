@@ -37,6 +37,8 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		req.RequestId = r.Header.Get("X-Request-ID")
 		if req.RequestId != "" {
 			fmt.Printf("Received RequestId: %s\n", req.RequestId)
+		} else {
+			req.RequestId = "xxxxxxx-xxxxxxxxx-xxxxx"
 		}
 
 		// 验证必填字段

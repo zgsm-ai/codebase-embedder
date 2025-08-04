@@ -9,6 +9,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
+	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
 type IndexTask struct {
@@ -25,6 +26,7 @@ type IndexTaskParams struct {
 	ClientId     string // 客户端ID
 	RequestId    string // 请求ID，用于状态管理
 	Files        map[string][]byte
+	Metadata     *types.SyncMetadata // 同步元数据
 }
 
 func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool) {

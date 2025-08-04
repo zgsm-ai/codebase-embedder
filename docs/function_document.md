@@ -211,10 +211,17 @@ project.zip
     "fileList": [
       {
         "path": "src/main/java/main.java",
+        "operate":"add",
         "status": "complete"
       },
       {
         "path": "src/main/java/server.java",
+        "operate":"modify",
+        "status": "complete"
+      },
+      {
+        "path": "src/main/java/server.java",
+        "operate":"delete",
         "status": "complete"
       }
     ]
