@@ -103,7 +103,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		// 不返回错误，继续处理
 	}
 
-	return &types.IndexTaskResponseData{TaskId: int(codebase.ID)}, nil
+	return &types.IndexTaskResponseData{TaskId: req.RequestId}, nil
 }
 
 // validateUploadToken 验证上传令牌的有效性
@@ -215,7 +215,7 @@ func (l *TaskLogic) extractFilesFromZip(zipReader *zip.ReadCloser, files map[str
 	fileCount := 0
 	shenmaSyncFiles := make(map[string][]byte)
 
-	// 遍历ZIP中的所有文件
+	// 先找到控制源文件
 	for _, zipFile := range zipReader.File {
 		// 跳过目录
 		if zipFile.FileInfo().IsDir() {
@@ -227,17 +227,25 @@ func (l *TaskLogic) extractFilesFromZip(zipReader *zip.ReadCloser, files map[str
 			if err := l.processShenmaSyncFile(zipFile, shenmaSyncFiles); err != nil {
 				return 0, err
 			}
+			break
+		}
+	}
+
+	// 遍历ZIP中的所有文件
+	for _, zipFile := range zipReader.File {
+		// 跳过目录
+		if zipFile.FileInfo().IsDir() {
 			continue
 		}
 
-		l.Logger.Infof("文件 %v 不存在于ExtraMetadata中，跳过处理", l.syncMetadata.FileList)
+		l.Logger.Infof("读取 %s 文件", zipFile.Name)
 
 		// 检查文件是否存在于ExtraMetadata中，如果不存在则忽略
 		if l.syncMetadata != nil {
 			// 将zipFile.Name中的Windows路径格式（反斜杠\）转换为Linux路径格式（正斜杠/）
 			linuxPath := strings.ReplaceAll(zipFile.Name, "\\", "/")
 			if _, exists := l.syncMetadata.FileList[linuxPath]; !exists {
-				l.Logger.Infof("文件 %s 不存在于ExtraMetadata中，跳过处理", zipFile.Name)
+				l.Logger.Infof("文件 %s 不存在于syncMetadata.FileList中，跳过处理 %v", zipFile.Name, l.syncMetadata.FileList)
 				continue
 			}
 		}

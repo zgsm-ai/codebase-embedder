@@ -9,7 +9,6 @@ type TreeNode struct {
 	Name         string      `json:"name"`                   // 节点名称
 	Path         string      `json:"path"`                   // 完整路径
 	Type         string      `json:"type"`                   // 节点类型: file/directory
-	Size         int64       `json:"size,omitempty"`         // 文件大小(字节)，仅文件节点有效
 	LastModified *time.Time  `json:"lastModified,omitempty"` // 最后修改时间，仅文件节点有效
 	Children     []*TreeNode `json:"children,omitempty"`     // 子节点，仅目录节点有效
 }

@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"sync"
 	"time"
+
+	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
@@ -95,7 +96,7 @@ func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool 
 		if err != nil {
 			tracer.WithTrace(ctx).Errorf("update task history %d failed: %v", p.params.CodebaseID, err)
 		}
-		
+
 		return true
 	}
 	return false
@@ -127,12 +128,25 @@ func (p *baseProcessor) processFilesConcurrently(
 
 	totalFiles := len(p.params.Files)
 
+	// 添加日志来验证文件数量
+	tracer.WithTrace(ctx).Infof("DEBUG: totalFiles count: %d", totalFiles)
+	if totalFiles == 0 {
+		tracer.WithTrace(ctx).Errorf("DEBUG: No files to process - this will cause divide by zero error")
+		return nil // 或者返回一个特定的错误
+	}
+
 	// 提交任务到工作池
 	for path, content := range p.params.Files {
 		select {
 		case <-ctx.Done():
 			duration := time.Since(start)
-			tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %v/file)", totalFiles, duration.Round(time.Millisecond), (duration / time.Duration(totalFiles)).Round(time.Microsecond))
+			var avgTime string
+			if totalFiles > 0 {
+				avgTime = (duration / time.Duration(totalFiles)).Round(time.Microsecond).String()
+			} else {
+				avgTime = "N/A (no files processed)"
+			}
+			tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %s/file)", totalFiles, duration.Round(time.Millisecond), avgTime)
 			return errs.RunTimeout
 		default:
 			wg.Add(1)
@@ -162,11 +176,23 @@ func (p *baseProcessor) processFilesConcurrently(
 	select {
 	case <-ctx.Done():
 		duration := time.Since(start)
-		tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %v/file)", totalFiles, duration.Round(time.Millisecond), (duration / time.Duration(totalFiles)).Round(time.Microsecond))
+		var avgTime string
+		if totalFiles > 0 {
+			avgTime = (duration / time.Duration(totalFiles)).Round(time.Microsecond).String()
+		} else {
+			avgTime = "N/A (no files processed)"
+		}
+		tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %s/file)", totalFiles, duration.Round(time.Millisecond), avgTime)
 		return errs.RunTimeout
 	case <-done:
 		duration := time.Since(start)
-		tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %v/file)", totalFiles, duration.Round(time.Millisecond), (duration / time.Duration(totalFiles)).Round(time.Microsecond))
+		var avgTime string
+		if totalFiles > 0 {
+			avgTime = (duration / time.Duration(totalFiles)).Round(time.Microsecond).String()
+		} else {
+			avgTime = "N/A (no files processed)"
+		}
+		tracer.WithTrace(ctx).Infof("processed %d files in %v (avg: %s/file)", totalFiles, duration.Round(time.Millisecond), avgTime)
 		if len(runErrs) > 0 {
 			if len(runErrs) > 10 {
 				return fmt.Errorf("process files failed (showing last 10 errors): %w", errors.Join(runErrs[len(runErrs)-10:]...))

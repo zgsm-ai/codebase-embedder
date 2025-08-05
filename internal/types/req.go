@@ -164,7 +164,7 @@ type IndexTaskRequest struct {
 }
 
 type IndexTaskResponseData struct {
-	TaskId int `json:"taskId"`
+	TaskId string `json:"taskId"`
 }
 
 type TokenRequest struct {

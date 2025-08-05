@@ -99,6 +99,14 @@ func (i *IndexTask) buildEmbedding(ctx context.Context) error {
 		})
 
 	start := time.Now()
+
+	// 添加日志来跟踪参数
+	tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Files length: %d", len(i.Params.Files))
+	tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Metadata: %v", i.Params.Metadata)
+	if i.Params.Metadata != nil {
+		tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Metadata.FileList length: %d", len(i.Params.Metadata.FileList))
+	}
+
 	embeddingTimeout, embeddingTimeoutCancel := context.WithTimeout(ctx, i.SvcCtx.Config.IndexTask.EmbeddingTask.Timeout)
 	defer embeddingTimeoutCancel()
 	eProcessor, err := NewEmbeddingProcessor(i.SvcCtx, i.Params)

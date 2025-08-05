@@ -60,6 +60,11 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		}
 
 		t.totalFileCnt = int32(len(t.params.Files))
+
+		// 添加日志来跟踪文件数量
+		tracer.WithTrace(ctx).Infof("DEBUG: embedding task - totalFileCnt: %d", t.totalFileCnt)
+		tracer.WithTrace(ctx).Infof("DEBUG: embedding task - t.params.Files length: %d", len(t.params.Files))
+
 		var (
 			addChunks       = make([]*types.CodeChunk, 0, t.totalFileCnt)
 			deleteFilePaths = make(map[string]struct{})

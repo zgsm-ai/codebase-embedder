@@ -792,17 +792,8 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			}
 
 			// 更新父路径历史记录 - 诊断：检查是否应该更新parentPathHistory
-			oldParentPath := parentPath
 			parentPath = normalizePath(filepath.Dir(parentPath)) // 🔧 修复：确保父路径也规范化
-			log.Printf("[DEBUG] 父路径更新: %s -> %s", oldParentPath, parentPath)
-
-			// 诊断：检查是否应该将新父路径添加到历史记录中
-			log.Printf("[DEBUG] 当前 parentPathHistory: %v", parentPathHistory)
-			log.Printf("[DEBUG] 是否应该将 %s 添加到 parentPathHistory?", parentPath)
 		}
-
-		// 诊断：检查循环结束后parentPathHistory的状态
-		log.Printf("[DEBUG] 循环结束后的 parentPathHistory: %v (长度: %d)", parentPathHistory, len(parentPathHistory))
 
 		// 添加文件节点
 		if includeFiles && !isDirectory(filePath) {
@@ -815,54 +806,9 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				continue
 			}
 
-			// 🔍 关键诊断：详细的文件节点创建信息
-			log.Printf("[DEBUG] 🔍 文件节点创建详情 - 详细分析:")
-			log.Printf("[DEBUG]   原始文件路径: '%s'", filePath)
-			log.Printf("[DEBUG]   节点名称: '%s'", fileNode.Name)
-			log.Printf("[DEBUG]   节点路径: '%s'", fileNode.Path)
-			log.Printf("[DEBUG]   节点类型: '%s'", fileNode.Type)
-
-			// 🔍 路径规范化分析 - 使用 normalizePath 函数
-			normalizedFilePath := normalizePath(filePath)
-			normalizedNodePath := normalizePath(fileNode.Path)
-			log.Printf("[DEBUG]   normalizePath 文件路径: '%s'", normalizedFilePath)
-			log.Printf("[DEBUG]   normalizePath 节点路径: '%s'", normalizedNodePath)
-
-			// 🔍 额外诊断： filepath.Clean vs normalizePath
-			cleanedFilePath := filepath.Clean(filePath)
-			cleanedNodePath := filepath.Clean(fileNode.Path)
-			log.Printf("[DEBUG]   filepath.Clean 文件路径: '%s'", cleanedFilePath)
-			log.Printf("[DEBUG]   filepath.Clean 节点路径: '%s'", cleanedNodePath)
-
-			// 🔍 路径格式分析
-			log.Printf("[DEBUG]   原始路径包含 /: %v", strings.Contains(filePath, "/"))
-			log.Printf("[DEBUG]   原始路径包含 \\: %v", strings.Contains(filePath, "\\"))
-			log.Printf("[DEBUG]   节点路径包含 /: %v", strings.Contains(fileNode.Path, "/"))
-			log.Printf("[DEBUG]   节点路径包含 \\: %v", strings.Contains(fileNode.Path, "\\"))
-			log.Printf("[DEBUG]   normalizePath 后包含 /: %v", strings.Contains(normalizedNodePath, "/"))
-			log.Printf("[DEBUG]   normalizePath 后包含 \\: %v", strings.Contains(normalizedNodePath, "\\"))
-
-			// �� 关键诊断：检查路径一致性
-			log.Printf("[DEBUG]   路径一致性检查:")
-			log.Printf("[DEBUG]     原始路径 == 节点路径: %v", filePath == fileNode.Path)
-			log.Printf("[DEBUG]     normalizePath(原始) == normalizePath(节点): %v", normalizedFilePath == normalizedNodePath)
-			log.Printf("[DEBUG]     filepath.Clean(原始) == filepath.Clean(节点): %v", cleanedFilePath == cleanedNodePath)
-
-			//  修复：使用规范化路径进行父目录查找
-			// 添加诊断日志：显示父目录查找过程
-			log.Printf("[DEBUG] 查找父目录 - Dir: '%s', RootPath: '%s', Dir == RootPath: %v", dir, rootPath, dir == rootPath)
-			log.Printf("[DEBUG] pathMap 中的目录数量: %d", len(pathMap))
-			for path, parentNode := range pathMap {
-				log.Printf("[DEBUG]   pathMap 包含目录: '%s' (已规范化)", path)
-				log.Printf("[DEBUG]   pathMap 包含目录: '%s' (已规范化)", parentNode.Name)
-				log.Printf("[DEBUG]   pathMap 包含目录: '%s' (已规范化)", parentNode.Type)
-			}
-
 			// 🔧 修复：简化父目录查找逻辑（现在所有路径都已规范化）
 			parentFound := false
 			var foundParentNode *types.TreeNode
-			var matchedParentPath string
-
 			// 🔍 关键诊断：规范化父目录路径
 			normalizedDir := normalizePath(dir)
 			log.Printf("[DEBUG] 🔍 父目录查找诊断 - 规范化处理:")
@@ -871,38 +817,17 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			log.Printf("[DEBUG]   pathMap 中的路径数量: %d", len(pathMap))
 
 			for path, parentNode := range pathMap {
-				log.Printf("[DEBUG] 🔍 父目录匹配诊断:")
-				log.Printf("[DEBUG]   比较路径 - pathMap中的路径: '%s'", path)
-				log.Printf("[DEBUG]   比较路径 - 规范化父目录: '%s'", normalizedDir)
-				log.Printf("[DEBUG]   直接比较结果: %v", path == normalizedDir)
-
 				// parentNode.Size = 20000
 
 				if path == normalizedDir { // 🔧 修复：直接比较规范化路径
 					foundParentNode = parentNode
-					matchedParentPath = path
 					parentFound = true
-					log.Printf("[DEBUG] ✅ 找到匹配的父目录: '%s'", path)
 					break
 				}
 			}
 			if parentFound && foundParentNode != nil {
 				// 将文件节点添加到找到的父目录
-				// foundParentNode.Size = 100000
-				if matchedParentPath == "code" {
-					log.Printf("[DEBUG] ==============================================================")
-					foundParentNode.Size = 10086
-				}
 				foundParentNode.Children = append(foundParentNode.Children, fileNode)
-				log.Printf("[DEBUG] ✅ 通过规范化路径匹配将文件 %s 添加到目录 %s", filePath, matchedParentPath)
-				log.Printf("[DEBUG]   目录 %s 现在有 %d 个子节点", matchedParentPath, len(foundParentNode.Children))
-
-				log.Printf("[DEBUG]   目录 %s子节点", foundParentNode.Name)
-
-				// 🌳 调试：添加文件节点后打印当前树结构
-				log.Printf("[DEBUG] 🌳 ===== 文件添加后树结构调试 =====")
-				log.Printf("[DEBUG] 🌳 新增文件: %s", filePath)
-				log.Printf("[DEBUG] 🌳 位置: %s/%s", matchedParentPath, fileNode.Name)
 
 				// 打印从根节点到新文件的完整路径
 				var printPathToNode func(*types.TreeNode, string) string
@@ -923,12 +848,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				fullPath := printPathToNode(root, filePath)
 				if fullPath != "" {
 					log.Printf("[DEBUG] 🌳 完整路径: /%s", fullPath)
-				}
-
-				// 打印该文件的父目录子节点列表
-				log.Printf("[DEBUG] 🌳 父目录 %s 的子节点列表:", matchedParentPath)
-				for i, child := range foundParentNode.Children {
-					log.Printf("[DEBUG] 🌳   子节点 %d: %s (%s) - 类型: %s", i+1, child.Name, child.Path, child.Type)
 				}
 
 				// 打印当前树的关键统计信息
@@ -956,31 +875,9 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				log.Printf("[DEBUG] 🌳 ===== 调用 printTreeStructure 打印完整树结构 =====")
 				printTreeStructure(root)
 			} else {
-				// 🔍 关键诊断：父目录查找失败的详细分析
-				log.Printf("[DEBUG] ❌ 父目录查找失败诊断:")
-				log.Printf("[DEBUG]   文件路径: '%s'", filePath)
-				log.Printf("[DEBUG]   期望的父目录: '%s'", dir)
-
-				// 🔧 修复：简化根目录匹配逻辑（现在所有路径都已规范化）
-				log.Printf("[DEBUG] 🔍 根目录匹配诊断:")
-				log.Printf("[DEBUG]   比较路径: '%s' vs '%s'", dir, rootPath)
-				log.Printf("[DEBUG]   路径是否相等: %v", dir == rootPath)
-
 				if dir == rootPath { // 🔧 修复：直接比较规范化路径
-					log.Printf("[DEBUG] 直接将文件 %s 添加到根目录 %s", filePath, rootPath)
+
 					root.Children = append(root.Children, fileNode)
-					log.Printf("[DEBUG] 根目录现在有 %d 个子节点", len(root.Children))
-
-					// 🌳 调试：添加文件节点到根目录后打印当前树结构
-					log.Printf("[DEBUG] 🌳 ===== 文件添加到根目录后树结构调试 =====")
-					log.Printf("[DEBUG] 🌳 新增文件: %s", filePath)
-					log.Printf("[DEBUG] 🌳 位置: 根目录/%s", fileNode.Name)
-
-					// 打印根目录子节点列表
-					log.Printf("[DEBUG] 🌳 根目录子节点列表:")
-					for i, child := range root.Children {
-						log.Printf("[DEBUG] 🌳   子节点 %d: %s (%s) - 类型: %s", i+1, child.Name, child.Path, child.Type)
-					}
 
 					// 打印当前树的关键统计信息
 					var countNodes func(*types.TreeNode) (int, int)
@@ -1003,16 +900,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 					fileCount, dirCount := countNodes(root)
 					log.Printf("[DEBUG] 🌳 当前树统计: %d 个文件, %d 个目录", fileCount, dirCount)
 				} else {
-					// 🔍 关键诊断：父目录不存在时的详细分析
-					log.Printf("[DEBUG] ❌ 父目录不存在，创建新目录: %s", dir)
-					log.Printf("[DEBUG]   诊断信息:")
-					log.Printf("[DEBUG]     期望父目录: '%s'", dir)
-					log.Printf("[DEBUG]     根目录路径: '%s'", rootPath)
-					log.Printf("[DEBUG]     dir类型判断: %v", isDirectory(dir))
-					log.Printf("[DEBUG]     pathMap 中的所有路径:")
-					for path := range pathMap {
-						log.Printf("[DEBUG]       '%s'", path)
-					}
 
 					parentDir := &types.TreeNode{
 						Name:     filepath.Base(dir),
@@ -1022,26 +909,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 					}
 					pathMap[dir] = parentDir
 					root.Children = append(root.Children, parentDir)
-					log.Printf("[DEBUG] 创建目录 %s 并添加文件 %s，根目录现在有 %d 个子节点", dir, filePath, len(root.Children))
-
-					// 🌳 调试：创建新目录并添加文件后打印当前树结构
-					log.Printf("[DEBUG] 🌳 ===== 创建新目录并添加文件后树结构调试 =====")
-					log.Printf("[DEBUG] 🌳 新增目录: %s", dir)
-					log.Printf("[DEBUG] 🌳 新增文件: %s", filePath)
-					log.Printf("[DEBUG] 🌳 位置: %s/%s", dir, fileNode.Name)
-
-					// 打印新创建的目录信息
-					log.Printf("[DEBUG] 🌳 新创建目录信息:")
-					log.Printf("[DEBUG] 🌳   目录名称: '%s'", parentDir.Name)
-					log.Printf("[DEBUG] 🌳   目录路径: '%s'", parentDir.Path)
-					log.Printf("[DEBUG] 🌳   目录类型: '%s'", parentDir.Type)
-					log.Printf("[DEBUG] 🌳   目录子节点数: %d", len(parentDir.Children))
-
-					// 打印根目录子节点列表
-					log.Printf("[DEBUG] 🌳 根目录子节点列表:")
-					for i, child := range root.Children {
-						log.Printf("[DEBUG] 🌳   子节点 %d: %s (%s) - 类型: %s, 子节点数: %d", i+1, child.Name, child.Path, child.Type, len(child.Children))
-					}
 
 					// 打印当前树的关键统计信息
 					var countNodes func(*types.TreeNode) (int, int)
@@ -1150,19 +1017,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				return true
 			}
 
-			// 🔍 特别处理：对于 code/rtx4090-pods.py 文件，添加详细诊断
-			if strings.Contains(filePath, "rtx4090-pods.py") {
-				log.Printf("[DEBUG] 🔥 关键诊断：处理 rtx4090-pods.py 文件")
-				log.Printf("[DEBUG]   原始文件路径: '%s'", filePath)
-				log.Printf("[DEBUG]   节点路径: '%s'", node.Path)
-				log.Printf("[DEBUG]   规范化文件路径: '%s'", normalizedFilePath)
-				log.Printf("[DEBUG]   规范化节点路径: '%s'", normalizedNodePath)
-				log.Printf("[DEBUG]   斜杠转换路径: '%s'", slashConvertedPath)
-				log.Printf("[DEBUG]   反斜杠转换路径: '%s'", backslashConvertedPath)
-				log.Printf("[DEBUG]   Cleaned 文件路径: '%s'", cleanedFilePath)
-				log.Printf("[DEBUG]   Cleaned 节点路径: '%s'", cleanedNodePath)
-			}
-
 			for _, child := range node.Children {
 				if checkNode(child) {
 					return true
@@ -1174,13 +1028,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		fileFound := checkNode(root)
 		if !fileFound && includeFiles && !isDirectory(filePath) {
 			missingFiles++
-			log.Printf("[DEBUG] ❌ 警告: 文件路径在树中未找到: %s", filePath)
-			log.Printf("[DEBUG]   诊断信息:")
-			log.Printf("[DEBUG]     路径: '%s'", filePath)
-			log.Printf("[DEBUG]     路径长度: %d", len(filePath))
-			log.Printf("[DEBUG]     包含 /: %v", strings.Contains(filePath, "/"))
-			log.Printf("[DEBUG]     包含 \\: %v", strings.Contains(filePath, "\\"))
-			log.Printf("[DEBUG]     可能原因: 路径格式不匹配或文件未被正确添加到树中")
 
 			// 🔍 新增：对于丢失的文件，显示树中的所有文件路径以便对比
 			log.Printf("[DEBUG] 🔍 树中现有文件路径列表:")
@@ -1345,7 +1192,6 @@ func createFileNode(filePath string) (*types.TreeNode, error) {
 		Name:         filepath.Base(normalizedPath),
 		Path:         normalizedPath, // 🔧 修复：使用规范化后的路径
 		Type:         "file",
-		Size:         1024, // 模拟文件大小
 		LastModified: &now,
 	}
 
