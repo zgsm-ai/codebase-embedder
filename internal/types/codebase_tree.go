@@ -1,16 +1,11 @@
 package types
 
-import (
-	"time"
-)
-
 // TreeNode 目录树节点
 type TreeNode struct {
-	Name         string      `json:"name"`                   // 节点名称
-	Path         string      `json:"path"`                   // 完整路径
-	Type         string      `json:"type"`                   // 节点类型: file/directory
-	LastModified *time.Time  `json:"lastModified,omitempty"` // 最后修改时间，仅文件节点有效
-	Children     []*TreeNode `json:"children,omitempty"`     // 子节点，仅目录节点有效
+	Name     string      `json:"name"`               // 节点名称
+	Path     string      `json:"path"`               // 完整路径
+	Type     string      `json:"type"`               // 节点类型: file/directory
+	Children []*TreeNode `json:"children,omitempty"` // 子节点，仅目录节点有效
 }
 
 // CodebaseTreeRequest 目录树查询请求
