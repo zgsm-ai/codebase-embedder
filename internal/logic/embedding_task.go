@@ -41,7 +41,7 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 			ClientId:      "",
 			CodebasePath:  "",
 			CodebaseName:  "",
-			ExtraMetadata: make(map[string]interface{}),
+			ExtraMetadata: make(map[string]types.MetadataValue),
 			FileList:      make(map[string]string),
 			Timestamp:     0,
 		},
@@ -281,12 +281,58 @@ func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName strin
 	// 解析JSON内容
 	var metadata types.SyncMetadata
 	metadata.FileList = make(map[string]string)
-	metadata.ExtraMetadata = make(map[string]interface{})
+	metadata.ExtraMetadata = make(map[string]types.MetadataValue)
 
-	if err := json.Unmarshal(content, &metadata); err != nil {
+	// 先解析为通用类型，然后转换为MetadataValue
+	var tempMetadata struct {
+		ClientId      string                 `json:"clientId"`
+		CodebasePath  string                 `json:"codebasePath"`
+		CodebaseName  string                 `json:"codebaseName"`
+		ExtraMetadata map[string]interface{} `json:"extraMetadata"`
+		FileList      map[string]string      `json:"fileList"`
+		Timestamp     int64                  `json:"timestamp"`
+	}
+
+	if err := json.Unmarshal(content, &tempMetadata); err != nil {
 		l.Logger.Errorf("解析.shenma_sync文件失败 %s: %v", fileName, err)
 		return
 	}
+
+	// 转换ExtraMetadata的类型
+	for key, value := range tempMetadata.ExtraMetadata {
+		switch v := value.(type) {
+		case string:
+			metadata.ExtraMetadata[key] = types.NewStringMetadataValue(v)
+		case float64:
+			metadata.ExtraMetadata[key] = types.NewNumberMetadataValue(v)
+		case bool:
+			metadata.ExtraMetadata[key] = types.NewBoolMetadataValue(v)
+		case []interface{}:
+			// 处理数组类型
+			if len(v) > 0 {
+				switch v[0].(type) {
+				case string:
+					strSlice := make([]string, len(v))
+					for i, elem := range v {
+						strSlice[i] = elem.(string)
+					}
+					metadata.ExtraMetadata[key] = types.NewStringArrayMetadataValue(strSlice)
+				case float64:
+					numSlice := make([]float64, len(v))
+					for i, elem := range v {
+						numSlice[i] = elem.(float64)
+					}
+					metadata.ExtraMetadata[key] = types.NewNumberArrayMetadataValue(numSlice)
+				}
+			}
+		}
+	}
+
+	metadata.ClientId = tempMetadata.ClientId
+	metadata.CodebasePath = tempMetadata.CodebasePath
+	metadata.CodebaseName = tempMetadata.CodebaseName
+	metadata.FileList = tempMetadata.FileList
+	metadata.Timestamp = tempMetadata.Timestamp
 
 	l.Logger.Infof("从 %s 中提取到 %d 个文件:", fileName, len(metadata.FileList))
 

@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
@@ -12,9 +13,7 @@ import (
 )
 
 func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
-
-
-
+	log.Println("[DEBUG] 开始注册路由...")
 
 	server.AddRoutes(
 		[]rest.Route{
@@ -26,6 +25,7 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		},
 		rest.WithPrefix("/codebase-embedder"),
 	)
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/search/semantic")
 
 	server.AddRoutes(
 		[]rest.Route{
@@ -57,6 +57,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		},
 		rest.WithPrefix("/codebase-embedder"),
 	)
+	log.Println("[DEBUG] 已注册路由: DELETE /codebase-embedder/api/v1/embeddings")
+	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/summary")
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/token")
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/upload")
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/status")
 
 	// 添加代码库查询接口路由
 	server.AddRoutes(
@@ -69,4 +74,19 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		},
 		rest.WithPrefix("/codebase-embedder"),
 	)
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/codebase/query")
+
+	// 添加代码库树结构接口路由
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodPost,
+				Path:    "/api/v1/codebase/tree",
+				Handler: NewCodebaseTreeHandler(serverCtx).TreeHandler,
+			},
+		},
+		rest.WithPrefix("/codebase-embedder"),
+	)
+	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/codebase/tree")
+	log.Println("[DEBUG] 路由注册完成")
 }

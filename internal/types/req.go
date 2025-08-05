@@ -68,13 +68,6 @@ type SemanticSearchResponseData struct {
 	List []*SemanticFileItem `json:"list"` // 检索结果列表
 }
 
-type CodebaseTreeRequest struct {
-	ClientId     string `form:"clientId"`        // 用户机器ID
-	CodebasePath string `form:"codebasePath"`    // 项目绝对路径
-	SubDir       string `form:"subDir,optional"` // 文件相对路径
-	Depth        int    `form:"depth,optional,default=5"`
-	IncludeFiles int    `form:"includeFiles,optional,default=1"`
-}
 
 
 

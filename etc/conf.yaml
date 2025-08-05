@@ -75,7 +75,7 @@ Log:
   ServiceName: "codebase-indexer"
   Encoding: plain # json,plain
   Path: "/app/logs"
-  Level: info # debug,info,error,severe
+  Level: debug # debug,info,error,severe
   KeepDays: 15
   MaxSize: 100 # MB per file, take affect when Rotation is size.
   Rotation: daily # split by day or size

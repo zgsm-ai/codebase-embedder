@@ -266,9 +266,31 @@ func getFloatValue(obj map[string]interface{}, key string) float64 {
 }
 
 func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error) {
+	// 添加调试日志
+	fmt.Printf("[DEBUG] GetCodebaseRecords - 开始执行，codebaseId: %d, codebasePath: %s\n", codebaseId, codebasePath)
+
+	// 检查输入参数
+	if codebaseId == 0 {
+		fmt.Printf("[DEBUG] 警告: codebaseId 为 0，这可能不正确\n")
+	}
+	if codebasePath == "" {
+		fmt.Printf("[DEBUG] 警告: codebasePath 为空字符串\n")
+	}
+
 	tenantName, err := r.generateTenantName(codebasePath)
 	if err != nil {
+		fmt.Printf("[DEBUG] 生成 tenantName 失败: %v\n", err)
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+	fmt.Printf("[DEBUG] 生成的 tenantName: %s\n", tenantName)
+
+	// 添加调试日志：检查 Weaviate 连接状态
+	fmt.Printf("[DEBUG] 检查 Weaviate 连接状态...\n")
+	live, err := r.client.Misc().LiveChecker().Do(ctx)
+	if err != nil {
+		fmt.Printf("[DEBUG] Weaviate 连接检查失败: %v\n", err)
+	} else {
+		fmt.Printf("[DEBUG] Weaviate 连接状态: %v\n", live)
 	}
 
 	// 定义GraphQL字段
@@ -288,12 +310,20 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
 		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
 
+	fmt.Printf("[DEBUG] 构建的过滤器 - codebaseId: %d\n", codebaseId)
+	fmt.Printf("[DEBUG] 查询类名: %s\n", r.className)
+	fmt.Printf("[DEBUG] 使用的 tenant: %s\n", tenantName)
+
 	// 执行查询，获取所有记录
 	var allRecords []*types.CodebaseRecord
 	limit := 1000 // 每批获取1000条记录
 	offset := 0
 
 	for {
+		fmt.Printf("[DEBUG] 执行 GraphQL 查询 - offset: %d, limit: %d\n", offset, limit)
+		fmt.Printf("[DEBUG] GraphQL 查询参数 - className: %s, tenant: %s, codebaseId: %d\n",
+			r.className, tenantName, codebaseId)
+
 		res, err := r.client.GraphQL().Get().
 			WithClassName(r.className).
 			WithFields(fields...).
@@ -304,20 +334,26 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 			Do(ctx)
 
 		if err != nil {
+			fmt.Printf("[DEBUG] GraphQL 查询失败: %v\n", err)
+			fmt.Printf("[DEBUG] 错误详情 - 可能是 tenant 不存在或权限问题\n")
 			return nil, fmt.Errorf("failed to get codebase records: %w", err)
 		}
 
 		if res == nil || res.Data == nil {
+			fmt.Printf("[DEBUG] 响应为空，结束查询 - 可能 tenant %s 中没有数据\n", tenantName)
 			break
 		}
 
 		// 解析响应
 		records, err := r.unmarshalCodebaseRecordsResponse(res)
 		if err != nil {
+			fmt.Printf("[DEBUG] 解析响应失败: %v\n", err)
 			return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
 		}
 
+		fmt.Printf("[DEBUG] 本批次获取记录数: %d\n", len(records))
 		if len(records) == 0 {
+			fmt.Printf("[DEBUG] 没有更多记录，结束查询 - tenant %s 中可能没有 codebaseId %d 的数据\n", tenantName, codebaseId)
 			break
 		}
 
@@ -327,6 +363,41 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 		// 如果获取的记录数小于limit，说明已经获取完所有记录
 		if len(records) < limit {
 			break
+		}
+	}
+
+	fmt.Printf("[DEBUG] 查询完成，总记录数: %d\n", len(allRecords))
+
+	// 分析查询结果
+	if len(allRecords) == 0 {
+		fmt.Printf("[DEBUG] 警告: 查询结果为空，可能的原因:\n")
+		fmt.Printf("[DEBUG] 1. Weaviate 中没有 codebaseId %d 的数据\n", codebaseId)
+		fmt.Printf("[DEBUG] 2. Tenant %s 不存在或没有权限访问\n", tenantName)
+		fmt.Printf("[DEBUG] 3. 过滤器条件过于严格\n")
+		fmt.Printf("[DEBUG] 4. Weaviate 连接配置有问题\n")
+		fmt.Printf("[DEBUG] 5. 类名 %s 不正确\n", r.className)
+	} else {
+		// 分析文件路径分布
+		pathAnalysis := make(map[string]int)
+		for _, record := range allRecords {
+			pathAnalysis[record.FilePath]++
+		}
+		fmt.Printf("[DEBUG] 查询结果分析:\n")
+		fmt.Printf("[DEBUG]   唯一文件路径数: %d\n", len(pathAnalysis))
+		fmt.Printf("[DEBUG]   总记录数: %d\n", len(allRecords))
+
+		// 显示前几个文件路径作为示例
+		count := 0
+		for path := range pathAnalysis {
+			if count < 5 {
+				fmt.Printf("[DEBUG]   示例文件路径 %d: %s\n", count+1, path)
+				count++
+			} else {
+				break
+			}
+		}
+		if len(pathAnalysis) > 5 {
+			fmt.Printf("[DEBUG]   ... (还有 %d 个文件路径未显示)\n", len(pathAnalysis)-5)
 		}
 	}
 
@@ -344,31 +415,40 @@ func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLRe
 
 	// 检查响应是否为空
 	if res == nil || res.Data == nil {
+		fmt.Printf("[DEBUG] 响应为空，返回 nil 记录\n")
 		return nil, nil
 	}
 
 	// 获取 Get 字段
 	data, ok := res.Data["Get"].(map[string]interface{})
 	if !ok {
+		fmt.Printf("[DEBUG] 响应格式错误：'Get' 字段不存在或类型错误\n")
 		return nil, fmt.Errorf("invalid response format: 'Get' field not found or has wrong type")
 	}
 
 	// 获取类名对应的数据
 	results, ok := data[r.className].([]interface{})
 	if !ok {
+		fmt.Printf("[DEBUG] 响应格式错误：类数据不存在或类型错误，类名: %s\n", r.className)
 		return nil, fmt.Errorf("invalid response format: class data not found or has wrong type")
 	}
 
+	fmt.Printf("[DEBUG] 解析响应，原始结果数量: %d\n", len(results))
+
 	records := make([]*types.CodebaseRecord, 0, len(results))
-	for _, result := range results {
+	uniquePaths := make(map[string]int) // 跟踪唯一路径
+
+	for i, result := range results {
 		obj, ok := result.(map[string]interface{})
 		if !ok {
+			fmt.Printf("[DEBUG] 跳过结果 %d：不是有效的 map[string]interface{} 类型\n", i)
 			continue
 		}
 
 		// 提取附加属性
 		additional, ok := obj["_additional"].(map[string]interface{})
 		if !ok {
+			fmt.Printf("[DEBUG] 跳过结果 %d：_additional 字段不存在或类型错误\n", i)
 			continue
 		}
 
@@ -391,10 +471,10 @@ func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLRe
 			}
 		}
 
-		// 创建记录
+		filePath := getStringValue(obj, MetadataFilePath)
 		record := &types.CodebaseRecord{
 			Id:          getStringValue(additional, "id"),
-			FilePath:    getStringValue(obj, MetadataFilePath),
+			FilePath:    filePath,
 			Language:    getStringValue(obj, MetadataLanguage),
 			Content:     getStringValue(obj, Content),
 			Range:       rangeInfo,
@@ -403,6 +483,19 @@ func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLRe
 		}
 
 		records = append(records, record)
+		uniquePaths[filePath]++
+
+		if i < 10 { // 只打印前10个记录避免日志过多
+			fmt.Printf("[DEBUG] 记录 %d: FilePath=%s, Language=%s, ID=%s\n", i+1, filePath, record.Language, record.Id)
+		}
+	}
+
+	fmt.Printf("[DEBUG] 解析完成，有效记录数: %d\n", len(records))
+	fmt.Printf("[DEBUG] 唯一文件路径数: %d\n", len(uniquePaths))
+	for path, count := range uniquePaths {
+		if count > 1 {
+			fmt.Printf("[DEBUG] 重复路径: %s (出现 %d 次)\n", path, count)
+		}
 	}
 
 	return records, nil
@@ -554,11 +647,18 @@ func (r *weaviateWrapper) createClassWithAutoTenantEnabled(client *goweaviate.Cl
 
 // generateTenantName 使用 MD5 哈希生成合规租户名（32字符，纯十六进制）
 func (r *weaviateWrapper) generateTenantName(codebasePath string) (string, error) {
+	// 添加调试日志
+	fmt.Printf("[DEBUG] generateTenantName - 输入 codebasePath: %s\n", codebasePath)
+
 	if codebasePath == types.EmptyString {
+		fmt.Printf("[DEBUG] generateTenantName - codebasePath 为空字符串\n")
 		return types.EmptyString, ErrInvalidCodebasePath
 	}
-	hash := md5.Sum([]byte(codebasePath))   // 计算 MD5 哈希
-	return hex.EncodeToString(hash[:]), nil // 转为32位十六进制字符串
+	hash := md5.Sum([]byte(codebasePath))     // 计算 MD5 哈希
+	tenantName := hex.EncodeToString(hash[:]) // 转为32位十六进制字符串
+
+	fmt.Printf("[DEBUG] generateTenantName - 生成的 tenantName: %s\n", tenantName)
+	return tenantName, nil
 }
 
 func (r *weaviateWrapper) unmarshalSummarySearchResponse(res *models.GraphQLResponse) (*types.EmbeddingSummary, error) {

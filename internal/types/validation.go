@@ -1,8 +1,20 @@
 package types
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 )
+
+// MetadataValue 表示元数据值的自定义类型
+type MetadataValue struct {
+	StringValue  string
+	NumberValue  float64
+	BoolValue    bool
+	StringValues []string
+	NumberValues []float64
+	IsArray      bool
+}
 
 // ValidationStatus 验证状态
 type ValidationStatus string
@@ -46,12 +58,12 @@ type ValidationDetail struct {
 
 // SyncMetadata 同步元数据结构
 type SyncMetadata struct {
-	ClientId      string                 `json:"clientId"`
-	CodebasePath  string                 `json:"codebasePath"`
-	CodebaseName  string                 `json:"codebaseName"`
-	ExtraMetadata map[string]interface{} `json:"extraMetadata"`
-	FileList      map[string]string      `json:"fileList"` // 文件路径 -> 状态
-	Timestamp     int64                  `json:"timestamp"`
+	ClientId      string                   `json:"clientId"`
+	CodebasePath  string                   `json:"codebasePath"`
+	CodebaseName  string                   `json:"codebaseName"`
+	ExtraMetadata map[string]MetadataValue `json:"extraMetadata"`
+	FileList      map[string]string        `json:"fileList"` // 文件路径 -> 状态
+	Timestamp     int64                    `json:"timestamp"`
 }
 
 // FileStats 文件统计信息
@@ -67,6 +79,108 @@ type ValidationParams struct {
 	ExtractPath  string            `json:"extract_path"`  // 解压文件路径
 	SkipPatterns []string          `json:"skip_patterns"` // 跳过文件模式
 	Config       *ValidationConfig `json:"config"`        // 验证配置
+}
+
+// NewStringMetadataValue 创建字符串类型的元数据值
+func NewStringMetadataValue(value string) MetadataValue {
+	return MetadataValue{
+		StringValue: value,
+	}
+}
+
+// NewNumberMetadataValue 创建数字类型的元数据值
+func NewNumberMetadataValue(value float64) MetadataValue {
+	return MetadataValue{
+		NumberValue: value,
+	}
+}
+
+// NewBoolMetadataValue 创建布尔类型的元数据值
+func NewBoolMetadataValue(value bool) MetadataValue {
+	return MetadataValue{
+		BoolValue: value,
+	}
+}
+
+// NewStringArrayMetadataValue 创建字符串数组类型的元数据值
+func NewStringArrayMetadataValue(values []string) MetadataValue {
+	return MetadataValue{
+		StringValues: values,
+		IsArray:      true,
+	}
+}
+
+// NewNumberArrayMetadataValue 创建数字数组类型的元数据值
+func NewNumberArrayMetadataValue(values []float64) MetadataValue {
+	return MetadataValue{
+		NumberValues: values,
+		IsArray:      true,
+	}
+}
+
+// MarshalJSON 实现MetadataValue的JSON序列化
+func (mv MetadataValue) MarshalJSON() ([]byte, error) {
+	if mv.IsArray {
+		if len(mv.StringValues) > 0 {
+			return json.Marshal(mv.StringValues)
+		} else if len(mv.NumberValues) > 0 {
+			return json.Marshal(mv.NumberValues)
+		}
+		return json.Marshal([]interface{}{})
+	} else {
+		if mv.StringValue != "" {
+			return json.Marshal(mv.StringValue)
+		} else if mv.NumberValue != 0 {
+			return json.Marshal(mv.NumberValue)
+		} else {
+			return json.Marshal(mv.BoolValue)
+		}
+	}
+}
+
+// UnmarshalJSON 实现MetadataValue的JSON反序列化
+func (mv *MetadataValue) UnmarshalJSON(data []byte) error {
+	// 尝试解析为字符串
+	var strVal string
+	if err := json.Unmarshal(data, &strVal); err == nil {
+		mv.StringValue = strVal
+		mv.IsArray = false
+		return nil
+	}
+
+	// 尝试解析为数字
+	var numVal float64
+	if err := json.Unmarshal(data, &numVal); err == nil {
+		mv.NumberValue = numVal
+		mv.IsArray = false
+		return nil
+	}
+
+	// 尝试解析为布尔值
+	var boolVal bool
+	if err := json.Unmarshal(data, &boolVal); err == nil {
+		mv.BoolValue = boolVal
+		mv.IsArray = false
+		return nil
+	}
+
+	// 尝试解析为字符串数组
+	var strSlice []string
+	if err := json.Unmarshal(data, &strSlice); err == nil {
+		mv.StringValues = strSlice
+		mv.IsArray = true
+		return nil
+	}
+
+	// 尝试解析为数字数组
+	var numSlice []float64
+	if err := json.Unmarshal(data, &numSlice); err == nil {
+		mv.NumberValues = numSlice
+		mv.IsArray = true
+		return nil
+	}
+
+	return fmt.Errorf("无法解析为MetadataValue: %s", string(data))
 }
 
 // ValidationConfig 验证配置
