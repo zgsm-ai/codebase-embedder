@@ -230,6 +230,18 @@ func (l *TaskLogic) extractFilesFromZip(zipReader *zip.ReadCloser, files map[str
 			continue
 		}
 
+		l.Logger.Infof("文件 %v 不存在于ExtraMetadata中，跳过处理", l.syncMetadata.FileList)
+
+		// 检查文件是否存在于ExtraMetadata中，如果不存在则忽略
+		if l.syncMetadata != nil {
+			// 将zipFile.Name中的Windows路径格式（反斜杠\）转换为Linux路径格式（正斜杠/）
+			linuxPath := strings.ReplaceAll(zipFile.Name, "\\", "/")
+			if _, exists := l.syncMetadata.FileList[linuxPath]; !exists {
+				l.Logger.Infof("文件 %s 不存在于ExtraMetadata中，跳过处理", zipFile.Name)
+				continue
+			}
+		}
+
 		// 处理普通文件
 		fileCount++
 		if err := l.processRegularFile(zipFile, files); err != nil {

@@ -66,6 +66,38 @@ func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool
 
 func (i *IndexTask) buildEmbedding(ctx context.Context) error {
 
+	for filePath, operation := range i.Params.Metadata.FileList {
+		tracer.WithTrace(ctx).Infof("------------------------------------, %s :%s ms.", filePath, operation)
+		// operations[filePath] = operation
+	}
+
+	fileOperations := make(map[string]string)
+	if i.Params.Metadata != nil {
+		fileOperations = extractFileOperations(i.Params.Metadata)
+	}
+
+	tracer.WithTrace(ctx).Infof("------------------------------------, %v ms.", fileOperations)
+
+	// 状态修改为处理中
+	_ = i.SvcCtx.StatusManager.UpdateFileStatus(ctx, i.Params.RequestId,
+		func(status *types.FileStatusResponseData) {
+			status.Process = "processing"
+			status.TotalProgress = 0
+			var fileStatusItems []types.FileStatusItem
+
+			for path, _ := range i.Params.Files {
+				fileStatusItem := types.FileStatusItem{
+					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
+					Status:  "processing",
+					Operate: fileOperations[path],
+				}
+				fileStatusItems = append(fileStatusItems, fileStatusItem)
+			}
+
+			status.FileList = fileStatusItems
+
+		})
+
 	start := time.Now()
 	embeddingTimeout, embeddingTimeoutCancel := context.WithTimeout(ctx, i.SvcCtx.Config.IndexTask.EmbeddingTask.Timeout)
 	defer embeddingTimeoutCancel()

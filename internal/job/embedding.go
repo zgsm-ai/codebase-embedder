@@ -89,13 +89,6 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			fileStatusItems = append(fileStatusItems, fileStatusItem)
 		}
 
-		// 更新Redis中的处理状态为"processing"
-		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
-			func(status *types.FileStatusResponseData) {
-				status.Process = "processing"
-				status.TotalProgress = 0
-			})
-
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
 			var result fileProcessResult
@@ -171,6 +164,20 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			}
 		}
 		if len(saveErrs) > 0 {
+
+			// 更新最终状态
+			_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
+				func(status *types.FileStatusResponseData) {
+					status.Process = "failed"
+					status.TotalProgress = 100
+					// 遍历 FileList，将所有状态为 "processing" 的文件标记为最终状态
+					for i := range status.FileList {
+						if status.FileList[i].Status == "processing" {
+							status.FileList[i].Status = "failed"
+						}
+					}
+				})
+
 			return errors.Join(saveErrs...)
 		}
 		// update task status

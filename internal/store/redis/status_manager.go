@@ -81,7 +81,6 @@ func (sm *StatusManager) GetFileStatus(ctx context.Context, requestId string) (*
 	return &status, nil
 }
 
-// UpdateFileStatus 更新文件处理状态（只支持通过requestId修改）
 func (sm *StatusManager) UpdateFileStatus(ctx context.Context, requestId string, updateFn func(*types.FileStatusResponseData)) error {
 	key := sm.generateRequestKey(requestId)
 	logx.Infof("UpdateFileStatus Key: %s", key)

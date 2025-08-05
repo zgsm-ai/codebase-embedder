@@ -25,7 +25,6 @@ func (m *MockStatusManager) SetFileStatusByRequestId(ctx context.Context, reques
 	return args.Error(0)
 }
 
-// UpdateFileStatus 更新文件处理状态
 func (m *MockStatusManager) UpdateFileStatus(ctx context.Context, requestId string, updateFn func(*types.FileStatusResponseData)) error {
 	args := m.Called(ctx, requestId, updateFn)
 	return args.Error(0)

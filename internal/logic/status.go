@@ -43,65 +43,6 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 		return redisStatus, nil
 	}
 
-	// 如果没有找到记录，返回初始状态
-	return &types.FileStatusResponseData{
-		Process:       "pending",
-		TotalProgress: 0,
-		FileList: []types.FileStatusItem{
-			{Path: req.CodebasePath, Status: "pending"},
-		},
-	}, nil
-}
-
-// convertStatus 转换数据库状态为API状态
-func (l *StatusLogic) convertStatus(dbStatus string) string {
-	switch dbStatus {
-	case "pending":
-		return "pending"
-	case "processing":
-		return "processing"
-	case "completed":
-		return "completed"
-	case "failed":
-		return "failed"
-	default:
-		return "pending"
-	}
-}
-
-// calculateProgress 计算处理进度
-func (l *StatusLogic) calculateProgress(status string, processed, total int) int {
-	if total == 0 {
-		return 0
-	}
-
-	switch status {
-	case "completed":
-		return 100
-	case "failed":
-		return 0
-	case "processing":
-		if total > 0 {
-			return int(float64(processed) / float64(total) * 100)
-		}
-		return 0
-	default:
-		return 0
-	}
-}
-
-// getStatusMessage 获取状态描述信息
-func (l *StatusLogic) getStatusMessage(status string) string {
-	switch status {
-	case "pending":
-		return "等待处理"
-	case "processing":
-		return "处理中"
-	case "completed":
-		return "处理完成"
-	case "failed":
-		return "处理失败"
-	default:
-		return "未知状态"
-	}
+	// 如果没有找到记录，返回错误并说明原因
+	return nil, fmt.Errorf("file status not found for request ID: %s, please ensure the file processing has been initiated", requestId)
 }
