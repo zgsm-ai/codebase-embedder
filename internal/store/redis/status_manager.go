@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/zeromicro/go-zero/core/logx"
+	// "github.com/zeromicro/go-zero/core/logx"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
@@ -35,9 +35,6 @@ func NewStatusManager(client *redis.Client) *StatusManager {
 // SetFileStatusByRequestId 通过RequestId设置文件处理状态到Redis
 func (sm *StatusManager) SetFileStatusByRequestId(ctx context.Context, requestId string, status *types.FileStatusResponseData) error {
 	key := sm.generateRequestKey(requestId)
-	logx.Infof("SetFileStatusByRequestId Key: %s", key)
-	// 打印status日志
-	logx.Infof("SetFileStatusByRequestId Status: %+v", status)
 	// 序列化状态数据
 	data, err := json.Marshal(status)
 	if err != nil {
@@ -56,7 +53,6 @@ func (sm *StatusManager) SetFileStatusByRequestId(ctx context.Context, requestId
 // GetFileStatus 从Redis获取文件处理状态
 func (sm *StatusManager) GetFileStatus(ctx context.Context, requestId string) (*types.FileStatusResponseData, error) {
 	key := sm.generateRequestKey(requestId)
-	logx.Infof("GetFileStatus Key: %s", key)
 	// 从Redis获取数据
 	data, err := sm.client.Get(ctx, key).Result()
 	if err != nil {
@@ -74,17 +70,11 @@ func (sm *StatusManager) GetFileStatus(ctx context.Context, requestId string) (*
 		return nil, fmt.Errorf("failed to unmarshal status data: %w", err)
 	}
 
-	logx.Infof("3333333333333333333333333333333333")
-	// 打印status日志
-	logx.Infof("GetFileStatus Status: %+v", status)
-
 	return &status, nil
 }
 
 func (sm *StatusManager) UpdateFileStatus(ctx context.Context, requestId string, updateFn func(*types.FileStatusResponseData)) error {
 	key := sm.generateRequestKey(requestId)
-	logx.Infof("UpdateFileStatus Key: %s", key)
-
 	// 从Redis获取数据
 	data, err := sm.client.Get(ctx, key).Result()
 	if err != nil {
@@ -106,8 +96,6 @@ func (sm *StatusManager) UpdateFileStatus(ctx context.Context, requestId string,
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal status data: %w", err)
 	}
-
-	logx.Infof("UpdateFileStatus Status: %+v", currentStatus)
 
 	// 应用更新函数
 	updateFn(&currentStatus)
@@ -131,11 +119,6 @@ func (sm *StatusManager) generateKey(clientID, codebasePath, codebaseName string
 // generateRequestKey 生成基于RequestId的Redis键
 func (sm *StatusManager) generateRequestKey(requestId string) string {
 	return fmt.Sprintf("%s%s", requestIdPrefix, requestId)
-}
-
-// generateSyncKey 生成基于syncId的Redis键
-func (sm *StatusManager) generateSyncKey(syncId string) string {
-	return fmt.Sprintf("%s%s", fileStatusPrefix, syncId)
 }
 
 // SetExpiration 设置自定义过期时间

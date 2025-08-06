@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
@@ -35,8 +34,6 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status from redis: %w", err)
 	}
-
-	logx.Infof("StatusLogic GetFileStatus: %+v", redisStatus)
 
 	// 如果Redis中有状态，直接返回
 	if redisStatus != nil {
