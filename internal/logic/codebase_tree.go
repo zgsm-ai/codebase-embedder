@@ -299,21 +299,6 @@ func (l *CodebaseTreeLogic) mergeSingleFileRecords(records []*types.CodebaseReco
 
 // logEmptyRecordsDiagnostic 记录空记录的诊断信息
 func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(codebaseId int32, codebasePath string) {
-	log.Printf("[DEBUG] ❌ 关键发现：未找到任何记录，这是导致目录树为空的直接原因！")
-	log.Printf("[DEBUG] 问题根源分析:")
-	log.Printf("[DEBUG] 1. codebaseId %d 在数据库中不存在", codebaseId)
-	log.Printf("[DEBUG] 2. codebasePath '%s' 不匹配数据库中存储的路径", codebasePath)
-	log.Printf("[DEBUG] 3. Weaviate 向量存储中没有对应的数据")
-	log.Printf("[DEBUG] 4. Weaviate 连接配置错误")
-	log.Printf("[DEBUG] 5. Tenant/命名空间生成错误")
-	log.Printf("[DEBUG] 可能的原因:")
-	log.Printf("[DEBUG] 1. codebaseId %d 在数据库中不存在", codebaseId)
-	log.Printf("[DEBUG] 2. codebasePath %s 不匹配", codebasePath)
-	log.Printf("[DEBUG] 3. Weaviate 中没有对应的数据")
-	log.Printf("[DEBUG] 4. Weaviate 连接失败")
-	log.Printf("[DEBUG] 5. Tenant 名称生成错误")
-	log.Printf("[DEBUG] 6. 过滤器条件过于严格")
-
 	// 详细诊断：检查数据库和向量存储的连接状态
 	log.Printf("[DEBUG] ===== 深度诊断：数据库和向量存储状态检查 =====")
 
@@ -935,31 +920,21 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		var checkNode func(*types.TreeNode) bool
 		var foundNodePath string
 		checkNode = func(node *types.TreeNode) bool {
-			// 🔧 修复：现在所有路径都已规范化，直接比较即可
-			log.Printf("[DEBUG] 🔍 路径比较诊断 (修复后):")
-			log.Printf("[DEBUG]   文件路径: '%s'", filePath)
-			log.Printf("[DEBUG]   节点路径: '%s'", node.Path)
-			log.Printf("[DEBUG]   直接比较结果: %v", node.Path == filePath)
 
 			// 🔍 新增诊断：规范化比较
 			normalizedFilePath := normalizePath(filePath)
 			normalizedNodePath := normalizePath(node.Path)
-			log.Printf("[DEBUG]   规范化文件路径: '%s'", normalizedFilePath)
-			log.Printf("[DEBUG]   规范化节点路径: '%s'", normalizedNodePath)
-			log.Printf("[DEBUG]   规范化比较结果: %v", normalizedNodePath == normalizedFilePath)
 
 			// 🔍 关键修复：尝试多种路径匹配方式
 			// 方式1：直接比较
 			if node.Path == filePath {
 				foundNodePath = node.Path
-				log.Printf("[DEBUG] ✅ 方式1成功：直接路径匹配")
 				return true
 			}
 
 			// 方式2：规范化比较
 			if normalizedNodePath == normalizedFilePath {
 				foundNodePath = node.Path
-				log.Printf("[DEBUG] ✅ 方式2成功：规范化路径匹配")
 				return true
 			}
 
@@ -967,7 +942,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			slashConvertedPath := strings.ReplaceAll(filePath, "/", "\\")
 			if node.Path == slashConvertedPath {
 				foundNodePath = node.Path
-				log.Printf("[DEBUG] ✅ 方式3成功：正斜杠转换匹配")
 				return true
 			}
 
@@ -975,7 +949,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			backslashConvertedPath := strings.ReplaceAll(filePath, "\\", "/")
 			if node.Path == backslashConvertedPath {
 				foundNodePath = node.Path
-				log.Printf("[DEBUG] ✅ 方式4成功：反斜杠转换匹配")
 				return true
 			}
 
@@ -984,7 +957,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			cleanedNodePath := filepath.Clean(node.Path)
 			if cleanedNodePath == cleanedFilePath {
 				foundNodePath = node.Path
-				log.Printf("[DEBUG] ✅ 方式5成功：filepath.Clean 匹配")
 				return true
 			}
 
@@ -1032,11 +1004,6 @@ func extractRootPath(filePaths []string) string {
 	log.Printf("[DEBUG] 输入文件路径数量: %d", len(filePaths))
 
 	if len(filePaths) == 0 {
-		log.Printf("[DEBUG] ❌ 关键诊断：文件路径列表为空，这是目录树构建失败的根本原因！")
-		log.Printf("[DEBUG] 问题分析:")
-		log.Printf("[DEBUG] 1. GetCodebaseRecords 没有返回任何记录")
-		log.Printf("[DEBUG] 2. 向量存储中可能没有数据")
-		log.Printf("[DEBUG] 3. codebaseId 或 codebasePath 参数错误")
 		return ""
 	}
 
@@ -1106,30 +1073,19 @@ func extractRootPath(filePaths []string) string {
 	commonPrefix := filePaths[0]
 	log.Printf("[DEBUG] 初始公共前缀（第一个路径）: '%s'", commonPrefix)
 
-	for i, path := range filePaths[1:] {
-		log.Printf("[DEBUG] 处理路径 %d: '%s'", i+2, path)
-		log.Printf("[DEBUG] 当前公共前缀: '%s'", commonPrefix)
-
+	for _, path := range filePaths[1:] {
 		newPrefix := findCommonPrefix(commonPrefix, path)
-		log.Printf("[DEBUG] 计算得到的新公共前缀: '%s'", newPrefix)
 
 		commonPrefix = newPrefix
 		if commonPrefix == "" {
-			log.Printf("[DEBUG] ⚠️ 公共前缀为空，中断查找")
 			break
 		}
 	}
 
-	log.Printf("[DEBUG] 最终公共前缀: '%s'", commonPrefix)
-
 	// 🔧 修复：如果公共前缀不以目录分隔符结尾，找到最后一个分隔符
 	lastSeparator := strings.LastIndexAny(commonPrefix, string(filepath.Separator))
-	log.Printf("[DEBUG] 最后一个分隔符位置: %d", lastSeparator)
 
 	if lastSeparator == -1 {
-		log.Printf("[DEBUG] 🔍 多级路径修复：未找到目录分隔符")
-		log.Printf("[DEBUG] 这可能表示所有文件都在同一级别或相对路径")
-
 		// 🔧 修复：对于多级路径，如果没有共同的目录前缀，尝试找到父目录
 		// 检查是否所有路径都有相同的第一级目录
 		firstComponents := make([]string, len(filePaths))
@@ -1150,24 +1106,17 @@ func extractRootPath(filePaths []string) string {
 		}
 
 		if allHaveSameFirstComponent && firstComponent != "" {
-			log.Printf("[DEBUG] ✅ 多级路径修复：所有路径都有相同的第一级组件 '%s'，使用它作为根路径", firstComponent)
 			return firstComponent
 		} else {
-			log.Printf("[DEBUG] ✅ 多级路径修复：路径没有共同的父目录，使用当前目录 '.' 作为根路径")
 			return "."
 		}
 	}
 
 	rootPath := commonPrefix[:lastSeparator+1]
-	log.Printf("[DEBUG] ✅ 提取的根路径: '%s'", rootPath)
-	log.Printf("[DEBUG] 根路径长度: %d", len(rootPath))
 
 	// 🔧 修复：确保根路径也被规范化
 	rootPath = normalizePath(rootPath)
-	log.Printf("[DEBUG] 🔍 规范化后的根路径: '%s'", rootPath)
 
-	log.Printf("[DEBUG] 🔍 多级路径根路径提取修复完成")
-	log.Printf("[DEBUG] ===== extractRootPath 执行完成 =====")
 	return rootPath
 }
 

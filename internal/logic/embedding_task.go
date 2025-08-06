@@ -16,6 +16,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
+	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
@@ -82,6 +83,43 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	files, fileCount, metadata, err := l.processUploadedZipFile(r)
 	if err != nil {
 		return nil, err
+	}
+
+	l.Logger.Info("===========================================================================")
+
+	// 遍历任务并分类
+	var addTasks, deleteTasks, modifyTasks []string
+	if l.syncMetadata != nil {
+		for key, value := range l.syncMetadata.FileList {
+			//value可以为add delete modify
+			l.Logger.Infof("文件 %s  操作 %s", key, value)
+
+			switch strings.ToLower(value) {
+			case "add":
+				addTasks = append(addTasks, key)
+			case "delete":
+				deleteTasks = append(deleteTasks, key)
+			case "modify":
+				modifyTasks = append(modifyTasks, key)
+			default:
+				l.Logger.Errorf("未知的操作类型 %s 对于文件 %s", value, key)
+			}
+		}
+	}
+
+	// 记录任务分类统计
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d",
+		len(addTasks), len(deleteTasks), len(modifyTasks))
+
+	// 如果有删除任务，从向量数据库中删除对应的文件
+	if len(deleteTasks) > 0 {
+		l.Logger.Infof("开始从向量数据库中删除 %d 个文件", len(deleteTasks))
+		if err := l.deleteFilesFromVectorDB(ctx, codebase, deleteTasks); err != nil {
+			l.Logger.Errorf("从向量数据库删除文件失败: %v", err)
+			// 不返回错误，继续处理其他任务
+		} else {
+			l.Logger.Infof("成功从向量数据库中删除 %d 个文件", len(deleteTasks))
+		}
 	}
 
 	// 更新代码库信息
@@ -245,8 +283,12 @@ func (l *TaskLogic) extractFilesFromZip(zipReader *zip.ReadCloser, files map[str
 			// 将zipFile.Name中的Windows路径格式（反斜杠\）转换为Linux路径格式（正斜杠/）
 			linuxPath := strings.ReplaceAll(zipFile.Name, "\\", "/")
 			if _, exists := l.syncMetadata.FileList[linuxPath]; !exists {
-				l.Logger.Infof("文件 %s 不存在于syncMetadata.FileList中，跳过处理 %v", zipFile.Name, l.syncMetadata.FileList)
+				// l.Logger.Infof("文件 %s 不存在于syncMetadata.FileList中，跳过处理 %v", zipFile.Name, l.syncMetadata.FileList)
 				continue
+			} else {
+				if l.syncMetadata.FileList[linuxPath] == "delete" {
+					continue
+				}
 			}
 		}
 
@@ -493,6 +535,42 @@ func (l *TaskLogic) saveCodebase(clientId, clientPath, userUId, codebaseName str
 		return nil, err
 	}
 	return codebaseModel, nil
+}
+
+// deleteFilesFromVectorDB 从向量数据库中删除指定的文件
+func (l *TaskLogic) deleteFilesFromVectorDB(ctx context.Context, codebase *model.Codebase, filePaths []string) error {
+	if len(filePaths) == 0 {
+		return nil // 没有文件需要删除
+	}
+
+	l.Logger.Infof("准备从向量数据库中删除 %d 个文件，代码库ID: %d", len(filePaths), codebase.ID)
+
+	// 构建需要删除的 CodeChunk 列表
+	var chunks []*types.CodeChunk
+	for _, filePath := range filePaths {
+		// 将文件路径转换为Linux格式（正斜杠）
+		linuxPath := strings.ReplaceAll(filePath, "\\", "/")
+		chunk := &types.CodeChunk{
+			CodebaseId:   codebase.ID,
+			CodebasePath: codebase.Path,
+			FilePath:     linuxPath,
+		}
+		chunks = append(chunks, chunk)
+		l.Logger.Debugf("添加文件到删除列表: %s", linuxPath)
+	}
+
+	// 调用向量数据库的删除方法
+	options := vector.Options{
+		CodebasePath: codebase.Path,
+	}
+	err := l.svcCtx.VectorStore.DeleteCodeChunks(ctx, chunks, options)
+	if err != nil {
+		l.Logger.Errorf("删除向量数据库中的文件失败: %v", err)
+		return fmt.Errorf("failed to delete files from vector database: %w", err)
+	}
+
+	l.Logger.Infof("成功从向量数据库中删除了 %d 个文件", len(filePaths))
+	return nil
 }
 
 // getSyncMetadata 获取同步元数据
