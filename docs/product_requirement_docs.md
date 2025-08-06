@@ -1,94 +1,8 @@
-# 产品需求文档：提交嵌入任务 - 检查文件流程
+# 产品需求文档：正在执行任务状态查询GET接口
 
 ## 1. 需求概述
 
-本文档基于 [`docs/function_document.md`](docs/function_document.md:63-66) 中"提交嵌入任务"处理流程的"检查文件"环节，使用 EARS（Easy Approach to Requirements Syntax）需求语法详细描述该流程的功能需求。
-
-## 2. EARS 需求描述
-
-### 2.1 需求类型
-**事件控制型需求 (Event-Controlled Requirement)**
-
-### 2.2 详细需求描述
-
-**事件 (Event):**
-当系统完成ZIP文件解压并成功读取 `.shenma_sync` 文件夹中的同步元数据文件后触发。
-
-**控制条件 (Control):**
-系统必须对解压后的实际文件列表与同步元数据文件中记录的待处理文件进行一致性验证。
-
-**状态 (State):**
-- 同步元数据文件已解析完成
-- 解压后的文件目录结构已建立
-- 同步元数据中包含 "fileList" 字段，其中包含 "add" 和 "modify" 操作标记的文件路径
-
-**响应 (Response):**
-系统必须执行以下操作序列：
-
-1. **文件存在性验证**
-   - 遍历同步元数据中 "fileList" 下的所有 "add" 操作标记的文件路径
-   - 遍历同步元数据中 "fileList" 下的所有 "modify" 操作标记的文件路径
-   - 验证每个标记的文件路径是否存在于解压后的文件目录结构中
-
-2. **匹配结果记录**
-   - 对每个验证的文件路径，记录其匹配状态（成功/失败）
-   - 对于匹配失败的文件，必须记录具体的文件路径和失败原因
-   - 生成完整的匹配结果摘要，包括：
-     - 总验证文件数
-     - 成功匹配数
-     - 匹配失败数
-     - 失败文件列表
-
-3. **日志输出**
-   - 将匹配结果以结构化格式输出到系统日志
-   - 日志级别：INFO
-   - 日志内容必须包含：
-     - 验证时间戳
-     - 代码库标识（clientId + codebasePath）
-     - 匹配结果摘要
-     - 失败文件详情（如存在）
-
-## 3. 功能边界
-
-### 3.1 包含范围
-- 验证同步元数据中标记为 "add" 的文件
-- 验证同步元数据中标记为 "modify" 的文件
-- 记录所有验证结果到日志系统
-
-### 3.2 排除范围
-- 不处理标记为 "delete" 的文件（这些文件已在之前的步骤中处理）
-- 不执行实际的文件内容处理（仅做存在性检查）
-- 不修改同步元数据文件内容
-- 不中断主流程（即使存在匹配失败的情况）
-
-## 4. 验收标准
-
-### 4.1 功能验收
-- [ ] 能够正确读取并解析同步元数据文件
-- [ ] 能够准确匹配元数据中指定的文件路径与实际文件
-- [ ] 能够生成完整的匹配结果报告
-- [ ] 能够将结果正确记录到系统日志
-
-### 4.2 性能验收
-- [ ] 文件验证过程应在1秒内完成（对于常规大小的代码库）
-- [ ] 日志记录不应影响主流程性能
-
-### 4.3 错误处理
-- [ ] 当同步元数据格式错误时，记录错误日志但不中断流程
-- [ ] 当文件系统访问失败时，记录具体错误信息
-- [ ] 对于不存在的文件路径，明确标记为匹配失败
-
-## 5. 备注
-
-此需求是"提交嵌入任务"整体流程中的一个关键环节，其目的是确保同步元数据的准确性，为后续的代码嵌入处理提供可靠的数据基础。该检查流程的结果仅用于信息记录和调试目的，不应影响主流程的执行。
-
----
-
-# 产品需求文档：代码库目录树查询接口
-
-## 1. 需求概述
-
-本文档基于 [`docs/function_document.md`](docs/function_document.md:261-361) 中"查询代码库信息"的内容，使用 EARS（Easy Approach to Requirements Syntax）需求语法详细描述新接口的功能需求，该接口专门用于返回代码库的目录树结构。
+本文档基于用户需求"添加一个GET接口，获取正在执行的任务情况，数据从redis里面读取"，使用 EARS（Easy Approach to Requirements Syntax）需求语法详细描述新接口的功能需求。该接口专门用于查询系统中所有客户端的所有正在执行的任务状态，数据存储在Redis中。
 
 ## 2. EARS 需求描述
 
@@ -98,47 +12,45 @@
 ### 2.2 详细需求描述
 
 **事件 (Event):**
-当客户端发送目录树查询请求到系统时触发。
+当客户端发送GET请求查询系统中所有正在执行的任务状态时触发。
 
 **控制条件 (Control):**
-系统必须验证请求参数的有效性，并确保请求的代码库存在且已完成索引处理。
+系统必须验证Redis服务可用，并能够扫描Redis中所有符合条件的状态数据。
 
 **状态 (State):**
-- 代码库已完成嵌入处理且状态为"completed"
-- 代码库文件信息已存储在数据库中
+- Redis服务正常运行
+- 任务状态数据已在Redis中以"request:id:"为前缀存储
 - 系统服务正常运行
 
 **响应 (Response):**
 系统必须执行以下操作序列：
 
-1. **参数验证**
-   - 验证请求中包含必需的参数（clientId、codebasePath、codebaseName）
-   - 验证参数格式正确性
-   - 验证客户端是否有权限访问指定代码库
+1. **Redis连接检查**
+   - 验证Redis服务连接状态
+   - 如果Redis服务不可用，返回相应错误信息
 
-2. **代码库状态检查**
-   - 查询数据库验证代码库存在性
-   - 检查代码库嵌入状态是否为"completed"
-   - 如果代码库不存在或未完成处理，返回相应错误信息
+2. **任务状态扫描**
+   - 扫描Redis中所有以"request:id:"为前缀的键
+   - 获取所有任务的状态数据
+   - 过滤出状态为pending、processing、running的任务
 
-3. **目录树构建**
-   - 从数据库查询代码库中所有文件路径
-   - 根据文件路径构建层次化目录结构
-   - 为每个节点添加类型标识（文件或目录）
-   - 为每个节点添加相关元数据（如文件大小、最后修改时间等）
+3. **数据聚合与处理**
+   - 解析每个任务的状态数据
+   - 聚合所有符合条件的任务信息
+   - 按照时间或其他逻辑排序任务列表
 
 4. **结果返回**
-   - 将构建的目录树结构化为JSON格式
-   - 包含根目录节点和所有子节点
-   - 每个节点必须包含路径、类型和子节点列表（如适用）
+   - 将所有查询结果结构化为JSON格式
+   - 包含任务总数和任务列表
+   - 每个任务包含完整的详细信息（任务ID、客户端ID、状态、进度、时间戳等）
 
 ## 3. 接口设计
 
 ### 3.1 接口基本信息
 
-**接口路径:** `POST /codebase-embedder/api/v1/codebase/tree`
+**接口路径:** `GET /codebase-embedder/api/v1/tasks/running`
 
-**请求格式:** `application/json`
+**请求格式:** 无请求体
 
 **响应格式:** `application/json`
 
@@ -146,11 +58,7 @@
 
 | 参数名 | 类型 | 是否必填 | 默认值 | 描述 | 示例值 |
 |--------|------|----------|--------|------|--------|
-| clientId | string | 是 | 无 | 客户端唯一标识 | "user_machine_id" |
-| codebasePath | string | 是 | 无 | 项目绝对路径 | "/absolute/path/to/project" |
-| codebaseName | string | 是 | 无 | 项目名称 | "project_name" |
-| maxDepth | int | 否 | 无 | 目录树最大深度，不传则返回完整目录树 | 3 |
-| includeFiles | boolean | 否 | true | 是否包含文件节点，false则只返回目录结构 | true |
+| 无 | 无 | 无 | 无 | 该接口不需要任何参数 | 无 |
 
 ### 3.3 成功响应示例
 
@@ -160,44 +68,60 @@
   "message": "ok",
   "success": true,
   "data": {
-    "name": "project_name",
-    "path": "/absolute/path/to/project",
-    "type": "directory",
-    "children": [
+    "totalTasks": 3,
+    "tasks": [
       {
-        "name": "src",
-        "path": "/absolute/path/to/project/src",
-        "type": "directory",
-        "children": [
+        "taskId": "request:id:uuid-generated-task-id-1",
+        "clientId": "user_machine_id_1",
+        "status": "running",
+        "process": "embedding",
+        "totalProgress": 65,
+        "startTime": "2025-08-06T15:20:00Z",
+        "lastUpdateTime": "2025-08-06T15:25:30Z",
+        "estimatedCompletionTime": "2025-08-06T15:30:00Z",
+        "fileList": [
           {
-            "name": "main.js",
-            "path": "/absolute/path/to/project/src/main.js",
-            "type": "file",
-            "size": 2048,
-            "lastModified": "2025-07-28T12:00:00Z"
+            "path": "src/main.js",
+            "status": "complete",
+            "operate": "add"
           },
           {
-            "name": "utils",
-            "path": "/absolute/path/to/project/src/utils",
-            "type": "directory",
-            "children": [
-              {
-                "name": "helper.js",
-                "path": "/absolute/path/to/project/src/utils/helper.js",
-                "type": "file",
-                "size": 1024,
-                "lastModified": "2025-07-28T11:30:00Z"
-              }
-            ]
+            "path": "src/utils/helper.js",
+            "status": "processing",
+            "operate": "modify"
           }
         ]
       },
       {
-        "name": "package.json",
-        "path": "/absolute/path/to/project/package.json",
-        "type": "file",
-        "size": 512,
-        "lastModified": "2025-07-28T10:15:00Z"
+        "taskId": "request:id:uuid-generated-task-id-2",
+        "clientId": "user_machine_id_2",
+        "status": "pending",
+        "process": "indexing",
+        "totalProgress": 0,
+        "startTime": "2025-08-06T15:25:00Z",
+        "lastUpdateTime": "2025-08-06T15:25:00Z",
+        "fileList": []
+      },
+      {
+        "taskId": "request:id:uuid-generated-task-id-3",
+        "clientId": "user_machine_id_1",
+        "status": "processing",
+        "process": "embedding",
+        "totalProgress": 30,
+        "startTime": "2025-08-06T15:15:00Z",
+        "lastUpdateTime": "2025-08-06T15:22:00Z",
+        "fileList": [
+          {
+            "path": "src/components/Header.jsx",
+            "status": "complete",
+            "operate": "add"
+          },
+          {
+            "path": "src/components/Footer.jsx",
+            "status": "pending",
+            "operate": "add"
+          }
+        ]
       }
     ]
   }
@@ -208,24 +132,16 @@
 
 ```json
 {
-  "code": 400,
-  "message": "缺少必需参数: clientId",
+  "code": 503,
+  "message": "Redis服务不可用，请稍后再试",
   "success": false
 }
 ```
 
 ```json
 {
-  "code": 404,
-  "message": "未找到指定的代码库",
-  "success": false
-}
-```
-
-```json
-{
-  "code": 409,
-  "message": "代码库索引尚未完成，请稍后再试",
+  "code": 500,
+  "message": "查询任务状态时发生内部错误",
   "success": false
 }
 ```
@@ -233,60 +149,91 @@
 ## 4. 功能边界
 
 ### 4.1 包含范围
-- 构建并返回代码库的目录树结构
-- 支持目录树深度限制
-- 支持是否包含文件节点的控制
-- 提供文件基本元数据（大小、修改时间等）
+- 查询系统中所有客户端的所有正在执行任务状态
+- 包含状态为pending、processing、running的所有任务
+- 返回完整的任务详细信息，包括任务ID、客户端ID、状态、进度、时间戳等
+- 提供文件级别的处理状态信息
+- 支持按时间或其他逻辑排序任务列表
 
 ### 4.2 排除范围
-- 不返回文件内容
-- 不返回代码嵌入相关的详细信息
-- 不提供目录树编辑功能
-- 不处理符号链接或特殊文件系统对象
+- 不修改任务状态
+- 不取消或暂停任务
+- 不提供任务历史记录查询
+- 不处理任务创建
+- 不支持分页功能
+- 不支持过滤功能
+- 不返回任务执行的详细日志
 
 ## 5. 验收标准
 
 ### 5.1 功能验收
-- [ ] 能够正确验证请求参数
-- [ ] 能够正确构建层次化目录树结构
-- [ ] 能够正确处理maxDepth参数限制
-- [ ] 能够正确处理includeFiles参数
-- [ ] 能够为文件节点添加正确的元数据
+- [ ] 能够正确检查Redis连接状态
+- [ ] 能够正确扫描Redis中所有以"request:id:"为前缀的键
+- [ ] 能够正确过滤出状态为pending、processing、running的任务
+- [ ] 能够正确解析和返回完整的任务详细信息
 - [ ] 能够正确处理各种错误情况
 
 ### 5.2 性能验收
-- [ ] 对于小型代码库（<1000文件），响应时间应在500ms内
-- [ ] 对于中型代码库（10000文件），响应时间应在2s内
-- [ ] 对于大型代码库（>10000文件），响应时间应在5s内
-- [ ] 内存使用应与代码库大小成线性关系
+- [ ] 对于少量任务（<10个），响应时间应在200ms内
+- [ ] 对于中等数量任务（10-50个），响应时间应在500ms内
+- [ ] 对于大量任务（>50个），响应时间应在2s内
+- [ ] Redis扫描操作不应阻塞其他系统操作
 
 ### 5.3 兼容性验收
 - [ ] 接口设计符合现有API风格
 - [ ] 错误处理机制与现有系统一致
-- [ ] 认证授权机制与现有系统一致
 - [ ] 响应格式符合现有系统规范
+- [ ] 与现有Redis状态管理机制兼容
 
 ## 6. 风险评估
 
 ### 6.1 技术风险
-- **性能风险**: 对于包含大量文件的代码库，构建目录树可能消耗较多内存和CPU资源
-  - 缓解措施: 实现分页加载或懒加载机制，限制单次返回的节点数量
+- **Redis可用性风险**: Redis服务不可用将导致接口无法正常工作
+  - 缓解措施: 实现Redis连接池和重试机制，提供优雅的错误处理
   
-- **数据一致性风险**: 数据库中的文件信息可能与实际文件系统不同步
-  - 缓解措施: 依赖已索引的数据，并在响应中注明数据可能不是最新的
+- **性能风险**: 大量任务同时存在可能导致Redis扫描操作耗时过长
+  - 缓解措施: 优化Redis扫描策略，考虑使用SCAN命令替代KEYS命令
+
+- **内存风险**: 大量任务数据同时加载到内存可能导致内存占用过高
+  - 缓解措施: 实现流式处理或分批加载机制
 
 ### 6.2 业务风险
-- **用户体验风险**: 过于复杂的目录树可能影响前端渲染性能
-  - 缓解措施: 提供maxDepth参数，允许客户端控制返回的目录树深度
+- **数据敏感性风险**: 返回所有客户端的任务信息可能涉及数据隐私
+  - 缓解措施: 确保接口有适当的访问控制和权限验证
+
+- **系统负载风险**: 频繁查询可能影响系统整体性能
+  - 缓解措施: 实现查询频率限制，建议客户端使用合理的轮询间隔
 
 ## 7. 后续扩展计划
 
 ### 7.1 短期扩展
-- 支持按文件类型过滤
-- 支持按最后修改时间排序
-- 支持目录展开/折叠状态记忆
+- 支持按客户端ID过滤任务
+- 支持按任务状态过滤任务
+- 支持按时间范围过滤任务
+- 支持分页查询大量任务
 
 ### 7.2 长期扩展
-- 支持虚拟滚动，优化大型目录树的渲染性能
-- 支持目录搜索和快速定位
-- 支持自定义节点图标和样式
+- 支持任务状态变更通知（WebSocket）
+- 支持任务执行时间统计
+- 支持任务历史记录查询
+- 支持任务性能分析和优化建议
+
+## 8. 技术实现考虑
+
+### 8.1 Redis数据结构
+- 利用现有的Redis状态管理机制（[`internal/store/redis/status_manager.go`](internal/store/redis/status_manager.go)）
+- 使用SCAN命令迭代获取所有以"request:id:"为前缀的键
+- 解析每个键对应的JSON数据，构建任务状态对象
+
+### 8.2 过滤逻辑
+- 根据任务状态字段过滤出pending、processing、running状态的任务
+- 可以考虑在Redis数据结构中添加状态索引以提高过滤效率
+
+### 8.3 数据结构复用
+- 集成现有的任务状态数据结构（[`internal/types/status.go`](internal/types/status.go)中的FileStatusResponseData）
+- 确保与现有状态更新逻辑的兼容性
+
+### 8.4 API实现
+- 创建新的HTTP处理器（参考[`internal/handler/status.go`](internal/handler/status.go)）
+- 实现对应的业务逻辑（参考[`internal/logic/status.go`](internal/logic/status.go)）
+- 在路由配置中添加新的GET路由（[`internal/handler/routes.go`](internal/handler/routes.go)）

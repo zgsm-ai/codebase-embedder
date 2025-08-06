@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -125,4 +127,105 @@ func (sm *StatusManager) generateRequestKey(requestId string) string {
 func (sm *StatusManager) SetExpiration(ctx context.Context, clientID, codebasePath, codebaseName string, expiration time.Duration) error {
 	key := sm.generateKey(clientID, codebasePath, codebaseName)
 	return sm.client.Expire(ctx, key, expiration).Err()
+}
+
+// CheckConnection 检查Redis连接
+func (sm *StatusManager) CheckConnection(ctx context.Context) error {
+	return sm.client.Ping(ctx).Err()
+}
+
+// ScanRunningTasks 扫描运行中的任务
+func (sm *StatusManager) ScanRunningTasks(ctx context.Context) ([]types.RunningTaskInfo, error) {
+	var runningTasks []types.RunningTaskInfo
+
+	// 使用SCAN命令避免阻塞
+	iter := sm.client.Scan(ctx, 0, "request:id:*", 0).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+
+		// 获取任务状态数据
+		data, err := sm.client.Get(ctx, key).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue // 键可能已过期
+			}
+			return nil, fmt.Errorf("failed to get task data for key %s: %w", key, err)
+		}
+
+		// 解析任务状态
+		var status types.FileStatusResponseData
+		if err := json.Unmarshal([]byte(data), &status); err != nil {
+			continue // 跳过格式错误的数据
+		}
+
+		// 过滤运行中的任务状态
+		if sm.isRunningStatus(status.Process) {
+			taskInfo, err := sm.parseTaskInfo(key, status)
+			if err != nil {
+				continue
+			}
+			runningTasks = append(runningTasks, taskInfo)
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("redis scan error: %w", err)
+	}
+
+	// 按开始时间排序
+	sort.Slice(runningTasks, func(i, j int) bool {
+		return runningTasks[i].StartTime.After(runningTasks[j].StartTime)
+	})
+
+	return runningTasks, nil
+}
+
+// isRunningStatus 检查是否为运行中的状态
+func (sm *StatusManager) isRunningStatus(status string) bool {
+	return status == "pending" || status == "processing" || status == "running"
+}
+
+// parseTaskInfo 解析任务信息
+func (sm *StatusManager) parseTaskInfo(key string, status types.FileStatusResponseData) (types.RunningTaskInfo, error) {
+	// 从key中提取任务ID
+	taskId := strings.TrimPrefix(key, "request:id:")
+
+	// 解析任务状态数据中的时间信息
+	var startTime, lastUpdateTime time.Time
+	var estimatedCompletionTime *time.Time
+
+	// 设置当前时间为最后更新时间
+	lastUpdateTime = time.Now()
+
+	// 根据进度估算开始时间
+	if status.TotalProgress > 0 {
+		startTime = lastUpdateTime.Add(-time.Duration(status.TotalProgress) * time.Minute)
+	} else {
+		startTime = lastUpdateTime
+	}
+
+	// 如果进度大于0且小于100，估算完成时间
+	if status.TotalProgress > 0 && status.TotalProgress < 100 {
+		estimatedTime := lastUpdateTime.Add(time.Duration((100 - status.TotalProgress)) * time.Minute)
+		estimatedCompletionTime = &estimatedTime
+	}
+
+	// 尝试从文件列表中提取客户端ID
+	var clientId string
+	if len(status.FileList) > 0 {
+		// 这里可以根据实际业务逻辑提取客户端ID
+		// 暂时使用空字符串，后续可以根据需要扩展
+		clientId = ""
+	}
+
+	return types.RunningTaskInfo{
+		TaskId:                  taskId,
+		ClientId:                clientId,
+		Status:                  status.Process,
+		Process:                 status.Process,
+		TotalProgress:           status.TotalProgress,
+		StartTime:               startTime,
+		LastUpdateTime:          lastUpdateTime,
+		EstimatedCompletionTime: estimatedCompletionTime,
+	}, nil
 }
