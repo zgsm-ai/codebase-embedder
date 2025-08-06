@@ -192,27 +192,14 @@ func (l *CodebaseTreeLogic) checkCodebaseInDatabase(codebaseId int32) {
 
 // getRecordsFromVectorStore 从向量存储中获取文件记录
 func (l *CodebaseTreeLogic) getRecordsFromVectorStore(codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error) {
-	log.Printf("[DEBUG] ===== 关键诊断点：调用 GetCodebaseRecords =====")
-	log.Printf("[DEBUG] 调用参数: codebaseId=%d, codebasePath=%s", codebaseId, codebasePath)
-
-	// 检查向量存储连接状态
-	log.Printf("[DEBUG] 向量存储连接状态检查...")
-	log.Printf("[DEBUG] VectorStore 实例类型: %T", l.svcCtx.VectorStore)
 	if l.svcCtx.VectorStore == nil {
-		log.Printf("[DEBUG] ❌ VectorStore 为 nil，这是问题的根源！")
 		return nil, fmt.Errorf("VectorStore 未初始化")
 	}
 
 	records, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, codebaseId, codebasePath)
 	if err != nil {
-		log.Printf("[DEBUG] ❌ GetCodebaseRecords 调用失败: %v", err)
-		log.Printf("[DEBUG] 这可能是导致只显示一级目录的根本原因：数据获取失败")
-		log.Printf("[DEBUG] 错误详细信息: %+v", err)
 		return nil, fmt.Errorf("查询文件路径失败: %w", err)
 	}
-
-	log.Printf("[DEBUG] ✅ GetCodebaseRecords 调用成功")
-	log.Printf("[DEBUG] 返回记录数: %d", len(records))
 
 	if len(records) == 0 {
 		l.logEmptyRecordsDiagnostic(codebaseId, codebasePath)
@@ -223,9 +210,6 @@ func (l *CodebaseTreeLogic) getRecordsFromVectorStore(codebaseId int32, codebase
 	mergedRecords, mergeCount := l.mergeRecordsByFilePath(records)
 	log.Printf("[DEBUG] 合并完成：原始记录数=%d，合并后记录数=%d，合并了%d个重复路径",
 		len(records), len(mergedRecords), mergeCount)
-
-	// 详细诊断检查记录的结构和内容
-	l.logRecordStructureAnalysis(mergedRecords)
 
 	return mergedRecords, nil
 }
@@ -243,13 +227,12 @@ func (l *CodebaseTreeLogic) mergeRecordsByFilePath(records []*types.CodebaseReco
 	var mergedRecords []*types.CodebaseRecord
 	mergeCount := 0
 
-	for filePath, fileRecords := range filePathMap {
+	for _, fileRecords := range filePathMap {
 		if len(fileRecords) == 1 {
 			// 没有重复，直接添加
 			mergedRecords = append(mergedRecords, fileRecords[0])
 		} else {
 			// 有重复，合并记录
-			log.Printf("[DEBUG] 合并重复文件路径: %s (共%d条记录)", filePath, len(fileRecords))
 			mergedRecord := l.mergeSingleFileRecords(fileRecords)
 			mergedRecords = append(mergedRecords, mergedRecord)
 			mergeCount += len(fileRecords) - 1
@@ -344,43 +327,6 @@ func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(codebaseId int32, codebase
 	log.Printf("[DEBUG]   req.CodebasePath: '%s' (长度: %d)", codebasePath, len(codebasePath))
 	log.Printf("[DEBUG]   req.CodebasePath 为空: %v", codebasePath == "")
 	log.Printf("[DEBUG]   req.CodebasePath 为 '.': %v", codebasePath == ".")
-}
-
-// logRecordStructureAnalysis 记录结构分析
-func (l *CodebaseTreeLogic) logRecordStructureAnalysis(records []*types.CodebaseRecord) {
-	log.Printf("[DEBUG] ===== 数据流跟踪：原始记录结构检查 =====")
-	if len(records) > 0 {
-		for i := 0; i < min(5, len(records)); i++ {
-			record := records[i]
-			// 类型转换
-			if record == nil {
-				log.Printf("[DEBUG] 记录 %d: nil", i+1)
-				continue
-			}
-
-			codebaseRecord := record
-
-			log.Printf("[DEBUG] 记录 %d 结构分析:", i+1)
-			log.Printf("[DEBUG]   记录类型: %T", record)
-
-			// 安全地访问 CodebaseRecord 字段
-			log.Printf("[DEBUG]   ID: %v", codebaseRecord.Id)
-			log.Printf("[DEBUG]   FilePath: %v", codebaseRecord.FilePath)
-			log.Printf("[DEBUG]   Language: %v", codebaseRecord.Language)
-			log.Printf("[DEBUG]   Content 长度: %d", len(codebaseRecord.Content))
-			log.Printf("[DEBUG]   Range: %v", codebaseRecord.Range)
-			log.Printf("[DEBUG]   TokenCount: %v", codebaseRecord.TokenCount)
-			log.Printf("[DEBUG]   LastUpdated: %v", codebaseRecord.LastUpdated)
-
-			// 检查路径格式
-			log.Printf("[DEBUG]   路径分析:")
-			log.Printf("[DEBUG]     是否以/开头: %v", strings.HasPrefix(codebaseRecord.FilePath, "/"))
-			log.Printf("[DEBUG]     是否包含\\: %v", strings.Contains(codebaseRecord.FilePath, "\\"))
-			log.Printf("[DEBUG]     路径分段: %v", strings.Split(codebaseRecord.FilePath, "/"))
-		}
-	} else {
-		log.Printf("[DEBUG] 没有记录可供分析")
-	}
 }
 
 // analyzeRecordsAndExtractPaths 分析记录并提取文件路径
@@ -587,32 +533,9 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 	normalizedPaths := make([]string, len(filePaths))
 	for i, path := range filePaths {
 		normalizedPaths[i] = normalizePath(path)
-
-		// 🔍 新增：详细的多级路径分析
-		log.Printf("[DEBUG] 🔍 多级路径分析 %d:", i+1)
-		log.Printf("[DEBUG]   原始路径: '%s'", path)
-		log.Printf("[DEBUG]   规范化后: '%s'", normalizedPaths[i])
-		log.Printf("[DEBUG]   路径深度: %d", strings.Count(path, string(filepath.Separator)))
-		log.Printf("[DEBUG]   是否包含多级: %v", strings.Count(path, string(filepath.Separator)) > 1)
-		log.Printf("[DEBUG]   路径组件: %v", strings.Split(path, string(filepath.Separator)))
-
-		if i < 10 { // 只显示前10个避免日志过多
-			log.Printf("[DEBUG]   路径规范化 %d: '%s' -> '%s'", i+1, path, normalizedPaths[i])
-		}
 	}
 	filePaths = normalizedPaths
 	log.Printf("[DEBUG] 🔍 关键诊断：多级路径规范化处理完成")
-
-	// 添加诊断日志：显示规范化后的文件路径列表
-	log.Printf("[DEBUG] 🔍 规范化后的文件路径列表分析 (共 %d 个):", len(filePaths))
-	for i, path := range filePaths {
-		if i < 10 { // 只显示前10个避免日志过多
-			log.Printf("[DEBUG]   规范化路径 %d: %s", i+1, path)
-		}
-		if i == 10 {
-			log.Printf("[DEBUG]   ... (还有 %d 个路径未显示)", len(filePaths)-10)
-		}
-	}
 
 	// 对文件路径进行去重处理
 	uniquePaths := make([]string, 0)
@@ -658,7 +581,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 
 	// 处理根路径为空的情况
 	if rootPath == "" {
-		log.Printf("[DEBUG] 根路径为空，使用默认根目录 '.'")
 		rootPath = "."
 	}
 
@@ -689,33 +611,17 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 	for _, filePath := range filePaths {
 		// 添加调试：跟踪每个文件路径的处理
 		processedFiles[filePath]++
-		log.Printf("[DEBUG] 处理文件路径: %s (第 %d 次处理)", filePath, processedFiles[filePath])
 
 		if !includeFiles && !isDirectory(filePath) {
-			log.Printf("[DEBUG] 跳过文件 (不包含文件): %s", filePath)
 			skippedFiles++
 			continue
 		}
-
-		// 计算文件深度 - 添加详细的深度计算日志
-		// 关键修复：处理 rootPath 为 "." 的情况
-		log.Printf("[DEBUG] 🔍 关键诊断：RelativePath 计算前分析")
-		log.Printf("[DEBUG]   FilePath: '%s', RootPath: '%s', len(RootPath): %d", filePath, rootPath, len(rootPath))
-		log.Printf("[DEBUG]   RootPath == '.': %v", rootPath == ".")
-
-		// 🔍 新增：多级路径相对路径计算诊断
-		log.Printf("[DEBUG] 🔍 多级路径相对路径计算诊断:")
-		log.Printf("[DEBUG]   原始文件路径深度: %d", strings.Count(filePath, string(filepath.Separator)))
-		log.Printf("[DEBUG]   根路径深度: %d", strings.Count(rootPath, string(filepath.Separator)))
-		log.Printf("[DEBUG]   文件路径组件: %v", strings.Split(filePath, string(filepath.Separator)))
-		log.Printf("[DEBUG]   根路径组件: %v", strings.Split(rootPath, string(filepath.Separator)))
 
 		// 🔧 修复：改进的相对路径计算逻辑，支持多级路径
 		var relativePath string
 		if rootPath == "." {
 			// 当根路径为 "." 时，不应该去掉任何字符
 			relativePath = filePath
-			log.Printf("[DEBUG] ✅ 检测到根路径为 '.'，使用完整文件路径作为相对路径")
 		} else {
 			// 🔧 修复：确保根路径匹配后再进行截取
 			if strings.HasPrefix(filePath, rootPath) {
@@ -728,17 +634,9 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				normalizedFilePath := normalizePath(filePath)
 				normalizedRootPath := normalizePath(rootPath)
 
-				log.Printf("[DEBUG] 🔍 多级路径修复：路径不匹配，尝试规范化比较")
-				log.Printf("[DEBUG]   原始文件路径: '%s', 规范化后: '%s'", filePath, normalizedFilePath)
-				log.Printf("[DEBUG]   原始根路径: '%s', 规范化后: '%s'", rootPath, normalizedRootPath)
-
 				if strings.HasPrefix(normalizedFilePath, normalizedRootPath) {
 					relativePath = normalizedFilePath[len(normalizedRootPath):]
-					log.Printf("[DEBUG] ✅ 多级路径修复：使用规范化路径成功计算相对路径")
 				} else {
-					// 🔧 修复：如果仍然不匹配，使用完整路径作为相对路径
-					// 这可能发生在根路径提取不准确的情况下
-					log.Printf("[DEBUG] ⚠️ 多级路径修复：规范化后仍不匹配，使用完整路径作为相对路径")
 					relativePath = filePath
 				}
 			}
@@ -749,7 +647,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			firstChar := relativePath[0]
 			if firstChar == '/' || firstChar == '\\' {
 				relativePath = relativePath[1:]
-				log.Printf("[DEBUG] ✅ 移除开头的分隔符，新的相对路径: '%s'", relativePath)
 			}
 		}
 
@@ -757,18 +654,7 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		log.Printf("[DEBUG] 深度计算 - FilePath: '%s', RootPath: '%s', RelativePath: '%s', Depth: %d",
 			filePath, rootPath, relativePath, currentDepth)
 
-		// 🔍 新增：多级路径深度分析
-		log.Printf("[DEBUG] 🔍 多级路径深度分析结果:")
-		log.Printf("[DEBUG]   相对路径: '%s'", relativePath)
-		log.Printf("[DEBUG]   相对路径深度: %d", currentDepth)
-		log.Printf("[DEBUG]   相对路径组件: %v", strings.Split(relativePath, string(filepath.Separator)))
-		log.Printf("[DEBUG]   是否为多级相对路径: %v", currentDepth > 1)
-		if currentDepth > 1 {
-			log.Printf("[DEBUG]   ⚠️  检测到多级相对路径，这可能导致目录树构建问题")
-		}
-
 		if maxDepth > 0 && currentDepth > maxDepth {
-			log.Printf("[DEBUG] 跳过文件 (超过最大深度): %s, 深度: %d, 最大深度: %d", filePath, currentDepth, maxDepth)
 			skippedFiles++
 			continue
 		}
@@ -779,19 +665,11 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 
 		// 添加诊断日志：显示文件路径分析
 		log.Printf("[DEBUG] ===== 数据流跟踪：文件路径处理 =====")
-		log.Printf("[DEBUG] 文件路径分析 - FilePath: '%s', RootPath: '%s', Dir: '%s'", filePath, rootPath, dir)
-		log.Printf("[DEBUG] 路径分割符检查 - 系统分隔符: '%s', FilePath中使用分隔符: %v",
-			string(filepath.Separator), strings.Contains(filePath, "\\"))
-
-		// 🔧 修复：路径规范化分析（现在所有路径都已规范化）
-		log.Printf("[DEBUG] 规范化路径: '%s' (所有路径已统一格式)", filePath)
-		log.Printf("========================================================================")
-		log.Printf("[DEBUG] 规范化路径: '%v' (所有路径已统一格式)", pathMap)
-		// 路径组件分析
-		pathComponents := strings.Split(filePath, string(filepath.Separator))
-		log.Printf("[DEBUG] 路径组件分解: %v (共 %d 个组件)", pathComponents, len(pathComponents))
 
 		{
+			// 路径组件分析
+			pathComponents := strings.Split(filePath, string(filepath.Separator))
+
 			// 给文件创建目录
 			mountPath := ""
 			currentPath := ""
@@ -807,27 +685,30 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 					currentPath = normalizePath(currentPath)
 				}
 
-				log.Printf("[DEBUG] 查找: '%v' %v", mountPath, pathMap)
-				if _, exists := pathMap[mountPath]; exists {
-					node := &types.TreeNode{
-						Name:     filepath.Base(pathComponent),
-						Path:     currentPath, // 🔧 修复：使用规范化路径
-						Type:     "directory",
-						Children: make([]*types.TreeNode, 0),
+				// 存在当前路径，则跳过，不创建
+				if _, exists := pathMap[currentPath]; exists {
+					if mountPath == "" {
+						mountPath = pathComponent
+					} else {
+						mountPath = mountPath + "\\" + pathComponent
+						mountPath = normalizePath(mountPath)
 					}
-					pathMap[currentPath] = node
-					// 挂载路径
+					continue
+				}
+
+				// 创建目录
+				node := &types.TreeNode{
+					Name:     filepath.Base(pathComponent),
+					Path:     currentPath,
+					Type:     "directory",
+					Children: make([]*types.TreeNode, 0),
+				}
+				pathMap[currentPath] = node
+
+				// 挂载目录
+				if _, exists := pathMap[mountPath]; exists {
 					pathMap[mountPath].Children = append(pathMap[mountPath].Children, node)
 				} else {
-					// 没有该路径则创建
-					node := &types.TreeNode{
-						Name:     filepath.Base(pathComponent),
-						Path:     currentPath, // 🔧 修复：使用规范化路径
-						Type:     "directory",
-						Children: make([]*types.TreeNode, 0),
-					}
-					pathMap[currentPath] = node
-					// 挂载路径
 					pathMap[rootPath].Children = append(pathMap[rootPath].Children, node)
 				}
 				if mountPath == "" {
@@ -837,16 +718,7 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 					mountPath = normalizePath(mountPath)
 				}
 			}
-		}
 
-		log.Printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-
-		// 检查根路径匹配（现在都使用规范化路径）
-		if strings.HasPrefix(filePath, rootPath) {
-			log.Printf("[DEBUG] ✅ 文件路径以根路径开头，应该被包含在树中")
-		} else {
-			log.Printf("[DEBUG] ⚠️  文件路径不以根路径开头，可能被过滤掉")
-			log.Printf("[DEBUG]   根路径: '%s', 文件路径: '%s'", rootPath, filePath)
 		}
 
 		// 添加文件节点
@@ -858,186 +730,35 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 				continue
 			}
 
-			// 🔧 修复：简化父目录查找逻辑（现在所有路径都已规范化）
 			parentFound := false
 			var foundParentNode *types.TreeNode
-			// 🔍 关键诊断：规范化父目录路径
 			normalizedDir := normalizePath(dir)
 
 			for path, parentNode := range pathMap {
-				if path == normalizedDir { // 🔧 修复：直接比较规范化路径
+				if path == normalizedDir {
 					foundParentNode = parentNode
 					parentFound = true
 					break
 				}
 			}
 			if parentFound && foundParentNode != nil {
-				// 将文件节点添加到找到的父目录
 				foundParentNode.Children = append(foundParentNode.Children, fileNode)
 			} else {
-				if dir == rootPath { // 🔧 修复：直接比较规范化路径
+				if dir == rootPath {
 					root.Children = append(root.Children, fileNode)
-				} else {
-					// parentDir := &types.TreeNode{
-					// 	Name:     filepath.Base(dir),
-					// 	Path:     dir, // 🔧 修复：使用规范化路径
-					// 	Type:     "directory",
-					// 	Children: []*types.TreeNode{fileNode},
-					// }
-					// pathMap[dir] = parentDir
-					// root.Children = append(root.Children, parentDir)
 				}
 			}
 		}
 	}
-
-	// 添加调试：总结处理结果
-	log.Printf("[DEBUG] 目录树构建完成:")
-	log.Printf("[DEBUG]   总共处理的文件路径数: %d", len(filePaths))
-	log.Printf("[DEBUG]   跳过的文件数: %d", skippedFiles)
-	log.Printf("[DEBUG]   实际处理的文件数: %d", processedFilesCount)
-	log.Printf("[DEBUG]   pathMap 中的节点数: %d", len(pathMap))
-	log.Printf("[DEBUG]   根目录的子节点数: %d", len(root.Children))
-
-	// 详细输出根目录的子节点信息
-	for i, child := range root.Children {
-		log.Printf("[DEBUG]   根目录子节点 %d: %s (%s), 类型: %s, 子节点数: %d",
-			i+1, child.Name, child.Path, child.Type, len(child.Children))
-
-		// 递归输出子节点的详细信息
-		if len(child.Children) > 0 {
-			for j, grandChild := range child.Children {
-				log.Printf("[DEBUG]     子目录 %s 的子节点 %d: %s (%s), 类型: %s",
-					child.Name, j+1, grandChild.Name, grandChild.Path, grandChild.Type)
-			}
-		}
-	}
-
-	// 🔧 修复：使用规范化路径检查文件是否在树中
-	missingFiles := 0
-	for _, filePath := range filePaths {
-		// 检查文件是否在树中
-		var checkNode func(*types.TreeNode) bool
-		var foundNodePath string
-		checkNode = func(node *types.TreeNode) bool {
-
-			// 🔍 新增诊断：规范化比较
-			normalizedFilePath := normalizePath(filePath)
-			normalizedNodePath := normalizePath(node.Path)
-
-			// 🔍 关键修复：尝试多种路径匹配方式
-			// 方式1：直接比较
-			if node.Path == filePath {
-				foundNodePath = node.Path
-				return true
-			}
-
-			// 方式2：规范化比较
-			if normalizedNodePath == normalizedFilePath {
-				foundNodePath = node.Path
-				return true
-			}
-
-			// 方式3：尝试将 / 转换为 \ 进行比较
-			slashConvertedPath := strings.ReplaceAll(filePath, "/", "\\")
-			if node.Path == slashConvertedPath {
-				foundNodePath = node.Path
-				return true
-			}
-
-			// 方式4：尝试将 \ 转换为 / 进行比较
-			backslashConvertedPath := strings.ReplaceAll(filePath, "\\", "/")
-			if node.Path == backslashConvertedPath {
-				foundNodePath = node.Path
-				return true
-			}
-
-			// 方式5：使用 filepath.Clean 比较
-			cleanedFilePath := filepath.Clean(filePath)
-			cleanedNodePath := filepath.Clean(node.Path)
-			if cleanedNodePath == cleanedFilePath {
-				foundNodePath = node.Path
-				return true
-			}
-
-			for _, child := range node.Children {
-				if checkNode(child) {
-					return true
-				}
-			}
-			return false
-		}
-
-		fileFound := checkNode(root)
-		if !fileFound && includeFiles && !isDirectory(filePath) {
-			missingFiles++
-
-			// 🔍 新增：对于丢失的文件，显示树中的所有文件路径以便对比
-			log.Printf("[DEBUG] 🔍 树中现有文件路径列表:")
-			var listAllFiles func(*types.TreeNode, string)
-			listAllFiles = func(n *types.TreeNode, indent string) {
-				if n.Type == "file" {
-					log.Printf("[DEBUG] %s  文件: '%s'", indent, n.Path)
-				} else {
-					for _, child := range n.Children {
-						listAllFiles(child, indent+"  ")
-					}
-				}
-			}
-			listAllFiles(root, "")
-		} else if fileFound {
-			log.Printf("[DEBUG] ✅ 文件 %s 在树中找到，匹配的节点路径: '%s'", filePath, foundNodePath)
-		} else {
-			log.Printf("[DEBUG] ℹ️ 文件 %s 跳过检查 (includeFiles=%v, isDirectory=%v)", filePath, includeFiles, isDirectory(filePath))
-		}
-		log.Printf("[DEBUG] 文件 %s 在树中: %v", filePath, fileFound)
-	}
-
-	log.Printf("[DEBUG]   未在树中找到的文件数: %d", missingFiles)
 
 	return root, nil
 }
 
 // extractRootPath 提取根路径
 func extractRootPath(filePaths []string) string {
-	log.Printf("[DEBUG] ===== extractRootPath 开始执行 =====")
-	log.Printf("[DEBUG] 输入文件路径数量: %d", len(filePaths))
-
 	if len(filePaths) == 0 {
 		return ""
 	}
-
-	// 🔧 修复：显示所有规范化后的文件路径以便分析
-	log.Printf("[DEBUG] 🔍 关键诊断：分析所有输入文件路径 (已规范化):")
-	log.Printf("[DEBUG] 🔍 多级路径根路径提取诊断开始")
-	for i, path := range filePaths {
-		if i < 15 { // 增加到前15个以便更好分析
-			log.Printf("[DEBUG]   路径 %d: '%s' (长度: %d)", i+1, path, len(path))
-			// 检查路径格式
-			log.Printf("[DEBUG]     路径分析 - 以/开头: %v, 以\\开头: %v",
-				strings.HasPrefix(path, "/"), strings.HasPrefix(path, "\\"))
-
-			// 🔍 新增：多级路径详细分析
-			depth := strings.Count(path, string(filepath.Separator))
-			components := strings.Split(path, string(filepath.Separator))
-			log.Printf("[DEBUG]     🔍 多级路径分析:")
-			log.Printf("[DEBUG]       路径深度: %d", depth)
-			log.Printf("[DEBUG]       路径组件数: %d", len(components))
-			log.Printf("[DEBUG]       组件详情: %v", components)
-			log.Printf("[DEBUG]       是否为多级路径: %v", depth > 1)
-			if depth > 1 {
-				log.Printf("[DEBUG]       第一级组件: '%s'", components[0])
-				log.Printf("[DEBUG]       第二级组件: '%s'", components[1])
-				if len(components) > 2 {
-					log.Printf("[DEBUG]       第三级组件: '%s'", components[2])
-				}
-			}
-		}
-		if i == 15 && len(filePaths) > 15 {
-			log.Printf("[DEBUG]   ... (还有 %d 个路径未显示)", len(filePaths)-15)
-		}
-	}
-	log.Printf("[DEBUG] 🔍 多级路径根路径提取诊断完成")
 
 	// 分析路径深度分布（使用规范化后的路径）
 	depthAnalysis := make(map[int]int)
@@ -1045,19 +766,11 @@ func extractRootPath(filePaths []string) string {
 		depth := strings.Count(path, string(filepath.Separator))
 		depthAnalysis[depth]++
 	}
-	log.Printf("[DEBUG] 路径深度分布:")
-	for depth, count := range depthAnalysis {
-		log.Printf("[DEBUG]   深度 %d: %d 个路径", depth, count)
-	}
-
-	// 🔧 修复：找到所有路径的公共前缀（使用规范化后的路径）
-	log.Printf("[DEBUG] 🔍 多级路径根路径提取修复开始")
 
 	if len(filePaths) == 0 {
 		return ""
 	}
 
-	// 🔧 修复：处理多级路径的特殊情况
 	// 首先分析所有路径的深度，确保找到正确的公共前缀
 	minDepth := int(^uint(0) >> 1) // 最大int值
 	for _, path := range filePaths {
@@ -1066,9 +779,7 @@ func extractRootPath(filePaths []string) string {
 			minDepth = depth
 		}
 	}
-	log.Printf("[DEBUG] 🔍 多级路径分析: 最小路径深度 = %d", minDepth)
 
-	// 🔧 修复：对于多级路径，需要更智能地找到公共前缀
 	// 使用改进的算法，考虑路径组件的匹配
 	commonPrefix := filePaths[0]
 	log.Printf("[DEBUG] 初始公共前缀（第一个路径）: '%s'", commonPrefix)
@@ -1180,21 +891,4 @@ func createFileNode(filePath string) (*types.TreeNode, error) {
 		Type: "file",
 	}
 	return node, nil
-}
-
-// printTreeStructure 递归打印树结构
-func printTreeStructure(tree *types.TreeNode) {
-	// 递归打印树结构
-	var printTree func(node *types.TreeNode, indent string)
-	printTree = func(node *types.TreeNode, indent string) {
-		log.Printf("[DEBUG] %s├── %s (%s) - 子节点数: %d", indent, node.Name, node.Type, len(node.Children))
-		for i := range node.Children {
-			newIndent := indent + "│  "
-			if i == len(node.Children)-1 {
-				newIndent = indent + "   "
-			}
-			printTree(node.Children[i], newIndent)
-		}
-	}
-	printTree(tree, "")
 }
