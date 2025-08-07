@@ -461,6 +461,7 @@ func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebas
 			RequestId:    requestId,
 			Files:        files,
 			Metadata:     metadata,
+			TotalFiles:   len(files),
 		},
 	}
 

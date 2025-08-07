@@ -592,7 +592,7 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 	var chunks []*CodeChunkEmbedding
 	if r.statusManager != nil && options.RequestId != "" {
 		// 创建带有状态管理器的临时 embedder
-		embedderWithStatus, err := NewEmbedderWithStatusManager(r.cfg.Embedder, r.statusManager, options.RequestId)
+		embedderWithStatus, err := NewEmbedderWithStatusManager(r.cfg.Embedder, r.statusManager, options.RequestId, options.TotalFiles)
 		if err != nil {
 			return fmt.Errorf("failed to create embedder with status manager: %w", err)
 		}

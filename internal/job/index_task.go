@@ -27,6 +27,7 @@ type IndexTaskParams struct {
 	RequestId    string // 请求ID，用于状态管理
 	Files        map[string][]byte
 	Metadata     *types.SyncMetadata // 同步元数据
+	TotalFiles   int                 // 文件总数
 }
 
 func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool) {

@@ -158,6 +158,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				CodebaseName: t.params.CodebaseName,
 				SyncId:       t.params.SyncID,
 				RequestId:    t.params.RequestId,
+				TotalFiles:   t.params.TotalFiles,
 			})
 			if err != nil {
 				tracer.WithTrace(ctx).Errorf("embedding task upsert code chunks failed: %v", err)

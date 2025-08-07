@@ -31,6 +31,7 @@ type customEmbedder struct {
 	embeddingClient EmbeddingClient
 	statusManager   *redis.StatusManager
 	requestId       string
+	totalFiles      int
 }
 
 // NewEmbedder creates a new instance of Embedder
@@ -44,7 +45,7 @@ func NewEmbedder(cfg config.EmbedderConf) (Embedder, error) {
 }
 
 // NewEmbedderWithStatusManager creates a new instance of Embedder with status manager
-func NewEmbedderWithStatusManager(cfg config.EmbedderConf, statusManager *redis.StatusManager, requestId string) (Embedder, error) {
+func NewEmbedderWithStatusManager(cfg config.EmbedderConf, statusManager *redis.StatusManager, requestId string, totalFiles int) (Embedder, error) {
 	embeddingClient := NewEmbeddingClient(cfg)
 
 	return &customEmbedder{
@@ -52,6 +53,7 @@ func NewEmbedderWithStatusManager(cfg config.EmbedderConf, statusManager *redis.
 		config:          cfg,
 		statusManager:   statusManager,
 		requestId:       requestId,
+		totalFiles:      totalFiles,
 	}, nil
 }
 
@@ -109,17 +111,56 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 
 				tracer.WithTrace(ctx).Errorf("%v-----------------------------: %v", processedFiles, processedFilePaths[filePath])
 
-				// 每处理10个文件就同步一次进度
+				// 每处理10个文件就同步一次进度，并将这批文件状态改为completed
 				if processedFiles%10 == 0 && e.statusManager != nil && e.requestId != "" {
-					progress := int(float64(processedFiles) / float64(len(processedFilePaths)) * 100)
+					// 使用总文件数计算进度，如果总文件数为0则使用已处理的文件路径数量作为分母
+					var denominator int
+					if e.totalFiles > 0 {
+						denominator = e.totalFiles
+					} else {
+						denominator = len(processedFilePaths)
+					}
+					progress := int(float64(processedFiles) / float64(denominator) * 100)
+
+					// 获取最近的10个已处理文件
+					completedFiles := make([]string, 0, 10)
+					for filePath := range processedFilePaths {
+						completedFiles = append(completedFiles, filePath)
+						if len(completedFiles) >= 10 {
+							break
+						}
+					}
+
 					err := e.statusManager.UpdateFileStatus(ctx, e.requestId, func(status *types.FileStatusResponseData) {
 						status.Process = "processing"
 						status.TotalProgress = progress
+
+						// 将这批文件的状态添加到FileList中
+						for _, filePath := range completedFiles {
+							// 检查文件是否已在FileList中
+							found := false
+							for i, item := range status.FileList {
+								if item.Path == filePath {
+									// 更新现有文件状态
+									status.FileList[i].Status = "completed"
+									found = true
+									break
+								}
+							}
+							// 如果文件不在FileList中，则添加新项
+							if !found {
+								status.FileList = append(status.FileList, types.FileStatusItem{
+									Path:    filePath,
+									Status:  "completed",
+									Operate: "add", // 默认操作类型为add
+								})
+							}
+						}
 					})
 					if err != nil {
 						tracer.WithTrace(ctx).Errorf("failed to update progress: %v", err)
 					} else {
-						tracer.WithTrace(ctx).Infof("updated progress: %d%% (%d/%d files)", progress, processedFiles, len(processedFilePaths))
+						tracer.WithTrace(ctx).Infof("updated progress: %d%% (%d/%d files), marked %d files as completed", progress, processedFiles, len(processedFilePaths), len(completedFiles))
 					}
 				}
 			}
@@ -129,6 +170,13 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 	// 最终更新一次进度
 	if e.statusManager != nil && e.requestId != "" {
 		progress := 100
+		// 计算最终的分母用于日志显示
+		var denominator int
+		if e.totalFiles > 0 {
+			denominator = e.totalFiles
+		} else {
+			denominator = len(processedFilePaths)
+		}
 		err := e.statusManager.UpdateFileStatus(ctx, e.requestId, func(status *types.FileStatusResponseData) {
 			status.Process = "complete"
 			status.TotalProgress = progress
@@ -136,7 +184,7 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 		if err != nil {
 			tracer.WithTrace(ctx).Errorf("failed to update final progress: %v", err)
 		} else {
-			tracer.WithTrace(ctx).Infof("updated final progress: %d%% (%d/%d files)", progress, processedFiles, len(processedFilePaths))
+			tracer.WithTrace(ctx).Infof("updated final progress: %d%% (%d/%d files)", progress, processedFiles, denominator)
 		}
 	}
 
