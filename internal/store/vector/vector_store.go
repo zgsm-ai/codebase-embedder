@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/config"
+	"github.com/zgsm-ai/codebase-indexer/internal/store/redis"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
@@ -26,11 +27,16 @@ const vectorWeaviate = "weaviate"
 type Options struct {
 	CodebaseId   int32
 	SyncId       int32
+	RequestId    string
 	CodebasePath string
 	CodebaseName string
 }
 
 func NewVectorStore(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Store, error) {
+	return NewVectorStoreWithStatusManager(cfg, embedder, reranker, nil, "")
+}
+
+func NewVectorStoreWithStatusManager(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker, statusManager interface{}, requestId string) (Store, error) {
 	var vectorStoreImpl Store
 	var err error
 	switch cfg.Type {
@@ -38,7 +44,14 @@ func NewVectorStore(cfg config.VectorStoreConf, embedder Embedder, reranker Rera
 		if cfg.Weaviate.Endpoint == types.EmptyString {
 			return nil, errors.New("vector conf weaviate is required for weaviate type")
 		}
-		vectorStoreImpl, err = New(cfg, embedder, reranker)
+		// 类型断言，确保 statusManager 是正确的类型
+		var sm *redis.StatusManager
+		if statusManager != nil {
+			if manager, ok := statusManager.(*redis.StatusManager); ok {
+				sm = manager
+			}
+		}
+		vectorStoreImpl, err = NewWithStatusManager(cfg, embedder, reranker, sm, requestId)
 	default:
 		err = fmt.Errorf("unsupported vector type: %s", cfg.Type)
 	}

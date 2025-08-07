@@ -51,7 +51,7 @@ func extractFileOperations(metadata *types.SyncMetadata) map[string]string {
 }
 
 func (t *embeddingProcessor) Process(ctx context.Context) error {
-	tracer.WithTrace(ctx).Infof("start to execute embedding task, codebase: %s", t.params.CodebaseName)
+	tracer.WithTrace(ctx).Infof("start to execute embedding task, codebase: %s RequestId %s", t.params.CodebaseName, t.params.RequestId)
 	start := time.Now()
 
 	err := func(t *embeddingProcessor) error {
@@ -96,14 +96,10 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
-			var result fileProcessResult
-			result.path = path
-
 			select {
 			case <-ctx.Done():
 				return errs.RunTimeout
 			default:
-				tracer.WithTrace(ctx).Infof("execute embedding task, path: %s", path)
 				chunks, err := t.splitFile(ctx, &types.SourceFile{Path: path, Content: content})
 				if err != nil {
 					if parser.IsNotSupportedFileError(err) {
@@ -145,6 +141,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				CodebasePath: t.params.CodebasePath,
 				CodebaseName: t.params.CodebaseName,
 				SyncId:       t.params.SyncID,
+				RequestId:    t.params.RequestId,
 			})
 			if err != nil {
 				tracer.WithTrace(ctx).Errorf("embedding task delete code chunks failed: %v", err)
@@ -160,6 +157,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				CodebasePath: t.params.CodebasePath,
 				CodebaseName: t.params.CodebaseName,
 				SyncId:       t.params.SyncID,
+				RequestId:    t.params.RequestId,
 			})
 			if err != nil {
 				tracer.WithTrace(ctx).Errorf("embedding task upsert code chunks failed: %v", err)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zgsm-ai/codebase-indexer/internal/store/redis"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 
 	"github.com/weaviate/weaviate/entities/vectorindex/dynamic"
@@ -26,11 +27,13 @@ import (
 )
 
 type weaviateWrapper struct {
-	reranker  Reranker
-	embedder  Embedder
-	client    *goweaviate.Client
-	className string
-	cfg       config.VectorStoreConf
+	reranker      Reranker
+	embedder      Embedder
+	client        *goweaviate.Client
+	className     string
+	cfg           config.VectorStoreConf
+	statusManager *redis.StatusManager
+	requestId     string
 }
 
 func New(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Store, error) {
@@ -55,6 +58,42 @@ func New(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Stor
 		embedder:  embedder,
 		reranker:  reranker,
 		cfg:       cfg,
+	}
+
+	// init class
+	err = store.createClassWithAutoTenantEnabled(client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create class: %w", err)
+	}
+
+	return store, nil
+}
+
+// NewWithStatusManager creates a new instance of weaviateWrapper with status manager
+func NewWithStatusManager(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker, statusManager *redis.StatusManager, requestId string) (Store, error) {
+	var authConf auth.Config
+	if cfg.Weaviate.APIKey != types.EmptyString {
+		authConf = auth.ApiKey{Value: cfg.Weaviate.APIKey}
+	}
+	client, err := goweaviate.NewClient(goweaviate.Config{
+		Host:       cfg.Weaviate.Endpoint,
+		Scheme:     schemeHttp,
+		AuthConfig: authConf,
+		Timeout:    cfg.Weaviate.Timeout,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Weaviate client: %w", err)
+	}
+
+	store := &weaviateWrapper{
+		client:        client,
+		className:     cfg.Weaviate.ClassName,
+		embedder:      embedder,
+		reranker:      reranker,
+		cfg:           cfg,
+		statusManager: statusManager,
+		requestId:     requestId,
 	}
 
 	// init class
@@ -547,7 +586,22 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 	if err != nil {
 		return err
 	}
-	chunks, err := r.embedder.EmbedCodeChunks(ctx, docs)
+
+	tracer.WithTrace(ctx).Infof("InsertCodeChunks options.RequestId: %s ", options.RequestId)
+	// 如果有状态管理器和请求ID，则使用带有状态管理器的 embedder
+	var chunks []*CodeChunkEmbedding
+	if r.statusManager != nil && options.RequestId != "" {
+		// 创建带有状态管理器的临时 embedder
+		embedderWithStatus, err := NewEmbedderWithStatusManager(r.cfg.Embedder, r.statusManager, options.RequestId)
+		if err != nil {
+			return fmt.Errorf("failed to create embedder with status manager: %w", err)
+		}
+		chunks, err = embedderWithStatus.EmbedCodeChunks(ctx, docs)
+	} else {
+		// 使用原有的 embedder
+		chunks, err = r.embedder.EmbedCodeChunks(ctx, docs)
+	}
+
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package svc
 
 import (
 	"context"
+
 	"github.com/panjf2000/ants/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -86,11 +87,6 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	}
 	reranker := vector.NewReranker(c.VectorStore.Reranker)
 
-	vectorStore, err := vector.NewVectorStore(c.VectorStore, embedder, reranker)
-	if err != nil {
-		return nil, err
-	}
-
 	splitter, err := embedding.NewCodeSplitter(embedding.SplitOptions{
 		MaxTokensPerChunk:          c.IndexTask.EmbeddingTask.MaxTokensPerChunk,
 		SlidingWindowOverlapTokens: c.IndexTask.EmbeddingTask.OverlapTokens})
@@ -110,11 +106,18 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	}
 	svcCtx.TaskPool = taskPool
 
-	svcCtx.VectorStore = vectorStore
 	svcCtx.Embedder = embedder
 	svcCtx.CodeSplitter = splitter
 	svcCtx.DistLock = lock
+	// 状态管理器
 	svcCtx.StatusManager = redisstore.NewStatusManager(client)
+
+	// 向量知识库
+	vectorStore, err := vector.NewVectorStoreWithStatusManager(c.VectorStore, embedder, reranker, svcCtx.StatusManager, "")
+	if err != nil {
+		return nil, err
+	}
+	svcCtx.VectorStore = vectorStore
 
 	return svcCtx, err
 }
