@@ -66,9 +66,10 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		tracer.WithTrace(ctx).Infof("DEBUG: embedding task - t.params.Files length: %d", len(t.params.Files))
 
 		var (
-			addChunks       = make([]*types.CodeChunk, 0, t.totalFileCnt)
-			deleteFilePaths = make(map[string]struct{})
-			mu              sync.Mutex // 保护 addChunks
+			addChunks        = make([]*types.CodeChunk, 0, t.totalFileCnt)
+			deleteFilePaths  = make(map[string]struct{})
+			unsupportedFiles = make([]string, 0) // 收集不支持的文件路径
+			mu               sync.Mutex          // 保护 addChunks 和 unsupportedFiles
 		)
 
 		// 处理单个文件的函数
@@ -79,36 +80,24 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			default:
 				chunks, err := t.splitFile(&types.SourceFile{Path: path, Content: content})
 				if err != nil {
-					tracer.WithTrace(ctx).Infof("%s parser.IsNotSupportedFileError: %s ,reason: %d", t.params.RequestId, path, err)
-
-					// 更新状态管理器，记录文件失败状态
-					err2 := t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
-						func(status *types.FileStatusResponseData) {
-
-							tracer.WithTrace(ctx).Infof("parser.IsNotSupportedFileError: execute")
-							// 查找文件是否已在FileList中
-							for i, item := range status.FileList {
-								if item.Path == path {
-									status.FileList[i].Status = "unsupported"
-									break
-								}
-							}
-							tracer.WithTrace(ctx).Infof("parser.IsNotSupportedFileError: not found")
-						})
-
-					if err2 != nil {
-						tracer.WithTrace(ctx).Infof("StatusManager.UpdateFileStatus error %v", err2)
-					}
+					mu.Lock()
+					unsupportedFiles = append(unsupportedFiles, path)
+					mu.Unlock()
 
 					if parser.IsNotSupportedFileError(err) {
+
 						atomic.AddInt32(&t.ignoreFileCnt, 1)
 						return nil
 					}
 					atomic.AddInt32(&t.failedFileCnt, 1)
-
 					return err
 				}
 				mu.Lock()
+
+				if len(chunks) <= 0 {
+					unsupportedFiles = append(unsupportedFiles, path)
+				}
+
 				addChunks = append(addChunks, chunks...)
 				mu.Unlock()
 
@@ -122,6 +111,31 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		if err := t.processFilesConcurrently(ctx, processFile, t.svcCtx.Config.IndexTask.EmbeddingTask.MaxConcurrency); err != nil {
 			return err
 		}
+
+		// 统一更新不支持的文件状态
+		if len(unsupportedFiles) > 0 {
+			tracer.WithTrace(ctx).Infof("updating %d unsupported files status", len(unsupportedFiles))
+			err := t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
+				func(status *types.FileStatusResponseData) {
+					for _, filePath := range unsupportedFiles {
+						for i, item := range status.FileList {
+							if item.Path == filePath {
+								status.FileList[i].Status = "unsupported"
+								tracer.WithTrace(ctx).Infof("marked file as unsupported: %s", filePath)
+								break
+							}
+						}
+					}
+				})
+			if err != nil {
+				tracer.WithTrace(ctx).Errorf("failed to update unsupported files status: %v", err)
+			}
+		}
+
+		// 打印不支持文件个数
+		tracer.WithTrace(ctx).Infof("embedding splitFile successfully, cost: %d ms, total: %d,success %d ,  unsupported: %d",
+			time.Since(start).Milliseconds(), t.totalFileCnt, t.successFileCnt, t.ignoreFileCnt)
+
 		var saveErrs []error
 		// 先删除，再写入
 		if len(deleteFilePaths) > 0 {
@@ -188,8 +202,8 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		return fmt.Errorf("embedding task failed to update status, err:%v", err)
 	}
 
-	tracer.WithTrace(ctx).Infof("embedding task end successfully, cost: %d ms, total: %d, success: %d, failed: %d",
-		time.Since(start).Milliseconds(), t.totalFileCnt, t.successFileCnt, t.failedFileCnt)
+	tracer.WithTrace(ctx).Infof("embedding task end successfully, cost: %d ms, total: %d, success: %d, failed: %d, unsupported: %d",
+		time.Since(start).Milliseconds(), t.totalFileCnt, t.successFileCnt, t.failedFileCnt, t.ignoreFileCnt)
 	return nil
 }
 

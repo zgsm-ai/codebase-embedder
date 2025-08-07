@@ -272,8 +272,6 @@ func (l *TaskLogic) extractFilesFromZip(zipReader *zip.ReadCloser, files map[str
 			continue
 		}
 
-		l.Logger.Infof("读取 %s 文件", zipFile.Name)
-
 		// 检查文件是否存在于ExtraMetadata中，如果不存在则忽略
 		if l.syncMetadata != nil {
 			// 将zipFile.Name中的Windows路径格式（反斜杠\）转换为Linux路径格式（正斜杠/）
