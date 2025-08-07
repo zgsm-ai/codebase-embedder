@@ -72,6 +72,8 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 	processedFiles := 0
 	// 用于跟踪已处理的文件路径，避免重复计数
 	processedFilePaths := make(map[string]bool)
+	// 用于跟踪当前批次的文件，每10个文件更新一批
+	currentBatchFiles := make([]string, 0, 10)
 
 	for start := 0; start < len(chunks); start += batchSize {
 		end := start + batchSize
@@ -109,9 +111,14 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 			if !processedFilePaths[filePath] {
 				processedFilePaths[filePath] = true
 				processedFiles++
+				// 将文件添加到当前批次
+				currentBatchFiles = append(currentBatchFiles, filePath)
 
 				// 每处理10个文件就同步一次进度，并将这批文件状态改为completed
-				if processedFiles%10 == 0 && e.statusManager != nil && e.requestId != "" {
+				// 或者处理完所有文件时，如果当前批次有文件也要更新（处理最后一批不满10个的情况）
+				shouldUpdate := (processedFiles%10 == 0) || (processedFiles == len(processedFilePaths) && len(currentBatchFiles) > 0)
+
+				if shouldUpdate && e.statusManager != nil && e.requestId != "" {
 					// 使用总文件数计算进度，如果总文件数为0则使用已处理的文件路径数量作为分母
 					var denominator int
 					if e.totalFiles > 0 {
@@ -121,14 +128,9 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 					}
 					progress := int(float64(processedFiles) / float64(denominator) * 100)
 
-					// 获取最近的10个已处理文件
-					completedFiles := make([]string, 0, 10)
-					for filePath := range processedFilePaths {
-						completedFiles = append(completedFiles, filePath)
-						if len(completedFiles) >= 10 {
-							break
-						}
-					}
+					// 复制当前批次文件作为要更新的文件列表
+					completedFiles := make([]string, len(currentBatchFiles))
+					copy(completedFiles, currentBatchFiles)
 
 					err := e.statusManager.UpdateFileStatus(ctx, e.requestId, func(status *types.FileStatusResponseData) {
 						status.Process = "processing"
@@ -161,6 +163,9 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 					} else {
 						tracer.WithTrace(ctx).Infof("updated progress: %d%% (%d/%d files), marked %d files as completed", progress, processedFiles, len(processedFilePaths), len(completedFiles))
 					}
+
+					// 清空当前批次，为下一批做准备
+					currentBatchFiles = make([]string, 0, 10)
 				}
 			}
 		}
