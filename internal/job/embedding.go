@@ -71,37 +71,35 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 			mu              sync.Mutex // 保护 addChunks
 		)
 
-		var fileStatusItems []types.FileStatusItem
-
-		// 从参数中获取同步元数据
-		var syncMetadata *types.SyncMetadata
-		if t.params.Metadata != nil {
-			syncMetadata = t.params.Metadata
-		}
-
-		// 提取文件操作类型
-		fileOperations := make(map[string]string)
-		if syncMetadata != nil {
-			fileOperations = extractFileOperations(syncMetadata)
-		}
-
-		for path, _ := range t.params.Files {
-			fileStatusItem := types.FileStatusItem{
-				Path:    path, // 使用当前处理的文件路径，而不是codebasePath
-				Status:  "processing",
-				Operate: fileOperations[path], // 设置操作类型
-			}
-			fileStatusItems = append(fileStatusItems, fileStatusItem)
-		}
-
 		// 处理单个文件的函数
 		processFile := func(path string, content []byte) error {
 			select {
 			case <-ctx.Done():
 				return errs.RunTimeout
 			default:
-				chunks, err := t.splitFile(ctx, &types.SourceFile{Path: path, Content: content})
+				chunks, err := t.splitFile(&types.SourceFile{Path: path, Content: content})
 				if err != nil {
+					tracer.WithTrace(ctx).Infof("%s parser.IsNotSupportedFileError: %s ,reason: %d", t.params.RequestId, path, err)
+
+					// 更新状态管理器，记录文件失败状态
+					err2 := t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
+						func(status *types.FileStatusResponseData) {
+
+							tracer.WithTrace(ctx).Infof("parser.IsNotSupportedFileError: execute")
+							// 查找文件是否已在FileList中
+							for i, item := range status.FileList {
+								if item.Path == path {
+									status.FileList[i].Status = "unsupported"
+									break
+								}
+							}
+							tracer.WithTrace(ctx).Infof("parser.IsNotSupportedFileError: not found")
+						})
+
+					if err2 != nil {
+						tracer.WithTrace(ctx).Infof("StatusManager.UpdateFileStatus error %v", err2)
+					}
+
 					if parser.IsNotSupportedFileError(err) {
 						atomic.AddInt32(&t.ignoreFileCnt, 1)
 						return nil
@@ -167,46 +165,21 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				saveErrs = append(saveErrs, err)
 			}
 		}
+
+		// 更新最终状态
+		t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
+			func(status *types.FileStatusResponseData) {
+				status.Process = "completed"
+				status.TotalProgress = 100
+			})
+
 		if len(saveErrs) > 0 {
-
-			// 更新最终状态
-			_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
-				func(status *types.FileStatusResponseData) {
-					status.Process = "failed"
-					status.TotalProgress = 100
-					// 遍历 FileList，将所有状态为 "processing" 的文件标记为最终状态
-					for i := range status.FileList {
-						if status.FileList[i].Status == "processing" {
-							status.FileList[i].Status = "failed"
-						}
-					}
-				})
-
 			return errors.Join(saveErrs...)
 		}
 		// update task status
 		if err := t.updateTaskSuccess(ctx); err != nil {
 			tracer.WithTrace(ctx).Errorf("embedding task update status success error:%v", err)
 		}
-
-		// 更新Redis中的最终状态
-		finalStatus := "completed"
-		if t.failedFileCnt > 0 {
-			finalStatus = "failed"
-		}
-		// 更新最终状态
-		_ = t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
-			func(status *types.FileStatusResponseData) {
-				status.Process = finalStatus
-				status.TotalProgress = 100
-				status.FileList = fileStatusItems
-				// 遍历 FileList，将所有状态为 "processing" 的文件标记为最终状态
-				for i := range status.FileList {
-					if status.FileList[i].Status == "processing" {
-						status.FileList[i].Status = finalStatus
-					}
-				}
-			})
 
 		return nil
 	}(t)
@@ -220,7 +193,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 	return nil
 }
 
-func (t *embeddingProcessor) splitFile(ctx context.Context, file *types.SourceFile) ([]*types.CodeChunk, error) {
+func (t *embeddingProcessor) splitFile(file *types.SourceFile) ([]*types.CodeChunk, error) {
 	// 切分文件
 	return t.svcCtx.CodeSplitter.Split(&types.SourceFile{
 		CodebaseId:   t.params.CodebaseID,

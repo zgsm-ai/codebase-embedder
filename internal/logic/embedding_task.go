@@ -85,14 +85,10 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		return nil, err
 	}
 
-	l.Logger.Info("===========================================================================")
-
 	// 遍历任务并分类
 	var addTasks, deleteTasks, modifyTasks []string
 	if l.syncMetadata != nil {
 		for key, value := range l.syncMetadata.FileList {
-			//value可以为add delete modify
-			l.Logger.Infof("文件 %s  操作 %s", key, value)
 
 			switch strings.ToLower(value) {
 			case "add":

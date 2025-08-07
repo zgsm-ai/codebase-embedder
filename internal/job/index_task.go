@@ -67,20 +67,19 @@ func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool
 
 func (i *IndexTask) buildEmbedding(ctx context.Context) error {
 
-	for filePath, operation := range i.Params.Metadata.FileList {
-		tracer.WithTrace(ctx).Infof("------------------------------------, %s :%s ms.", filePath, operation)
-		// operations[filePath] = operation
-	}
+	// for filePath, operation := range i.Params.Metadata.FileList {
+	// 	tracer.WithTrace(ctx).Infof("------------------------------------, %s :%s ms.", filePath, operation)
+	// }
 
 	fileOperations := make(map[string]string)
 	if i.Params.Metadata != nil {
 		fileOperations = extractFileOperations(i.Params.Metadata)
 	}
 
-	tracer.WithTrace(ctx).Infof("------------------------------------, %v ms.", fileOperations)
+	// tracer.WithTrace(ctx).Infof("------------------------------------, %v ms.", fileOperations)
 
 	// 状态修改为处理中
-	_ = i.SvcCtx.StatusManager.UpdateFileStatus(ctx, i.Params.RequestId,
+	i.SvcCtx.StatusManager.UpdateFileStatus(ctx, i.Params.RequestId,
 		func(status *types.FileStatusResponseData) {
 			status.Process = "processing"
 			status.TotalProgress = 0
@@ -103,7 +102,6 @@ func (i *IndexTask) buildEmbedding(ctx context.Context) error {
 
 	// 添加日志来跟踪参数
 	tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Files length: %d", len(i.Params.Files))
-	tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Metadata: %v", i.Params.Metadata)
 	if i.Params.Metadata != nil {
 		tracer.WithTrace(ctx).Infof("DEBUG: index_task - i.Params.Metadata.FileList length: %d", len(i.Params.Metadata.FileList))
 	}

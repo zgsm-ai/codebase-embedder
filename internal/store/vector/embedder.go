@@ -83,7 +83,11 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 		batch := make([][]byte, end-start)
 		for i := 0; i < end-start; i++ {
 			batch[i] = chunks[start+i].Content
-			tracer.WithTrace(ctx).Infof("execute to %s embedding %d", chunks[start+i].FilePath, len(batch[i]))
+			filePath := chunks[start+i].FilePath
+			if !processedFilePaths[filePath] {
+				tracer.WithTrace(ctx).Infof("execute to %s embedding lens: %d, requestid %s", chunks[start+i].FilePath, len(batch[i]), e.requestId)
+			}
+
 		}
 
 		// 执行嵌入
@@ -101,15 +105,10 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 				CodeChunk: chunks[start+i],
 				Embedding: em,
 			})
-			tracer.WithTrace(ctx).Errorf("embeddings progress: %v", chunks[start+i].FilePath)
-			// 检查文件是否已经被处理过
-			tracer.WithTrace(ctx).Errorf("%v   ===============================: %v", e.requestId, processedFilePaths)
 			filePath := chunks[start+i].FilePath
 			if !processedFilePaths[filePath] {
 				processedFilePaths[filePath] = true
 				processedFiles++
-
-				tracer.WithTrace(ctx).Errorf("%v-----------------------------: %v", processedFiles, processedFilePaths[filePath])
 
 				// 每处理10个文件就同步一次进度，并将这批文件状态改为completed
 				if processedFiles%10 == 0 && e.statusManager != nil && e.requestId != "" {
