@@ -40,6 +40,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Handler: summaryHandler(serverCtx),
 			},
 			{
+				Method:  http.MethodGet,
+				Path:    "/api/v1/embeddings/vectors-summary",
+				Handler: vectorsSummaryHandler(serverCtx),
+			},
+			{
 				Method:  http.MethodPost,
 				Path:    "/api/v1/files/token",
 				Handler: TokenHandler(serverCtx),
@@ -59,6 +64,7 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 	)
 	log.Println("[DEBUG] 已注册路由: DELETE /codebase-embedder/api/v1/embeddings")
 	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/summary")
+	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/vectors-summary")
 	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/token")
 	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/upload")
 	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/status")

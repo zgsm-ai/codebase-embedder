@@ -73,12 +73,32 @@ type DeleteIndexRequest {
 
 type DeleteIndexResponseData {}
 
+type GetAllVectorsSummaryRequest {}
+
+type VectorSummaryItem {
+	clientId     string           `json:"clientId"`     // 客户端ID
+	codebasePath string           `json:"codebasePath"` // 项目路径
+	codebaseName string           `json:"codebaseName"` // 项目名称
+	totalFiles   int              `json:"totalFiles"`   // 总文件数
+	embedding    EmbeddingSummary `json:"embedding"`    // 向量汇总信息
+	createdAt    string           `json:"createdAt"`    // 创建时间
+	updatedAt    string           `json:"updatedAt"`    // 更新时间
+}
+
+type GetAllVectorsSummaryResponseData {
+	totalCount int                 `json:"totalCount"` // 总代码库数量
+	items      []VectorSummaryItem `json:"items"`      // 代码库向量信息列表
+}
+
 @server (
 	prefix: /codebase-embedder
 )
 service codebaseindexer {
 	@handler summary
 	get /api/v1/embeddings/summary (IndexSummaryRequest) returns (IndexSummaryResonseData)
+
+	@handler vectorsSummary
+	get /api/v1/embeddings/vectors-summary (GetAllVectorsSummaryRequest) returns (GetAllVectorsSummaryResponseData)
 
 	@handler add_embeddings
 	post /api/v1/embeddings (IndexTaskRequest) returns (IndexTaskResponseData)

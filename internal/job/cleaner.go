@@ -2,6 +2,8 @@ package job
 
 import (
 	"context"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -10,7 +12,6 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
-	"time"
 )
 
 const cleanLockKey = "codebase_embedder:lock:cleaner"
@@ -73,14 +74,6 @@ func NewCleaner(ctx context.Context, svcCtx *svc.ServiceContext) (Job, error) {
 			if err != nil {
 				logx.Errorf("cleaner drop codebase store %s error: %v", cb.Path, err)
 			}
-			// todo clean graph store ， clean codebase alerady delete all files， now graph store is in codebase store.
-			//graphStore, err := codegraph.NewBadgerDBGraph(ctx, codegraph.WithPath(filepath.Join(cb.FilePaths, types.CodebaseIndexDir)))
-			//
-			//err = graphStore.DeleteAll(ctx)
-			//if err != nil {
-			//	logx.Errorf("drop codebase store %s error: %v", cb.FilePaths, err)
-			//	continue
-			//}
 
 			// todo update db status， 唯一索引的存在(client_id、codebasePath)，给client_id 加个唯一后缀，避免冲突。
 			cb.ClientID = cb.ClientID + "@" + uuid.New().String()

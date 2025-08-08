@@ -178,3 +178,24 @@ type TokenResponseData struct {
 	ExpiresIn int    `json:"expiresIn"` // 有效期(秒)
 	TokenType string `json:"tokenType"` // 令牌类型
 }
+
+// GetAllVectorsSummaryRequest 获取所有向量信息汇总的请求
+type GetAllVectorsSummaryRequest struct {
+}
+
+// VectorSummaryItem 单个代码库的向量汇总信息
+type VectorSummaryItem struct {
+	ClientId     string            `json:"clientId"`     // 客户端ID
+	CodebasePath string            `json:"codebasePath"` // 项目路径
+	CodebaseName string            `json:"codebaseName"` // 项目名称
+	TotalFiles   int               `json:"totalFiles"`   // 总文件数
+	Embedding    EmbeddingSummary  `json:"embedding"`    // 向量汇总信息
+	CreatedAt    string            `json:"createdAt"`    // 创建时间
+	UpdatedAt    string            `json:"updatedAt"`    // 更新时间
+}
+
+// GetAllVectorsSummaryResponseData 获取所有向量信息汇总的响应
+type GetAllVectorsSummaryResponseData struct {
+	TotalCount int                 `json:"totalCount"` // 总代码库数量
+	Items      []*VectorSummaryItem `json:"items"`      // 代码库向量信息列表
+}
