@@ -74,10 +74,11 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 	// 获取分布式锁
 	// mux, err := l.acquireTaskLock(ctx, codebase.ID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer l.svcCtx.DistLock.Unlock(ctx, mux)
+	mux, err := l.acquireTaskLock(ctx, req.RequestId)
+	if err != nil {
+		return nil, err
+	}
+	defer l.svcCtx.DistLock.Unlock(ctx, mux)
 
 	// 处理上传的ZIP文件
 	files, fileCount, metadata, err := l.processUploadedZipFile(r)
@@ -152,8 +153,8 @@ func (l *TaskLogic) validateUploadToken(uploadToken string) error {
 }
 
 // acquireTaskLock 获取任务锁
-func (l *TaskLogic) acquireTaskLock(ctx context.Context, codebaseID int32) (*redsync.Mutex, error) {
-	lockKey := fmt.Sprintf("codebase_embedder:task:%d", codebaseID)
+func (l *TaskLogic) acquireTaskLock(ctx context.Context, codebaseID string) (*redsync.Mutex, error) {
+	lockKey := fmt.Sprintf("codebase_embedder:task:%s", codebaseID)
 
 	mux, locked, err := l.svcCtx.DistLock.TryLock(ctx, lockKey, l.svcCtx.Config.IndexTask.LockTimeout)
 	if err != nil || !locked {
