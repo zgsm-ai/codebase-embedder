@@ -39,6 +39,7 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			fmt.Printf("Received RequestId: %s\n", req.RequestId)
 		} else {
 			req.RequestId = "xxxxxxx-xxxxxxxxx-xxxxx"
+			fmt.Printf("not Received RequestId: using")
 		}
 
 		// 验证必填字段

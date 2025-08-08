@@ -73,11 +73,11 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
 	// 获取分布式锁
-	mux, err := l.acquireTaskLock(ctx, codebase.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer l.svcCtx.DistLock.Unlock(ctx, mux)
+	// mux, err := l.acquireTaskLock(ctx, codebase.ID)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// defer l.svcCtx.DistLock.Unlock(ctx, mux)
 
 	// 处理上传的ZIP文件
 	files, fileCount, metadata, err := l.processUploadedZipFile(r)
