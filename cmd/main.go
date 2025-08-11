@@ -56,6 +56,15 @@ func main() {
 		panic(err)
 	}
 
+	// 在程序启动时重置所有pending和processing任务为failed状态
+	logx.Infof("Resetting all pending and processing tasks to failed...")
+	if err := svcCtx.StatusManager.ResetPendingAndProcessingTasksToFailed(serverCtx); err != nil {
+		logx.Errorf("Failed to reset pending and processing tasks to failed: %v", err)
+		// 不应该因为重置失败而阻止程序启动
+	} else {
+		logx.Infof("Successfully reset all pending and processing tasks to failed")
+	}
+
 	jobScheduler, err := job.NewScheduler(serverCtx, svcCtx)
 	if err != nil {
 		panic(err)

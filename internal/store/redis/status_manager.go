@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	// "github.com/zeromicro/go-zero/core/logx"
+	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
@@ -228,4 +228,59 @@ func (sm *StatusManager) parseTaskInfo(key string, status types.FileStatusRespon
 		LastUpdateTime:          lastUpdateTime,
 		EstimatedCompletionTime: estimatedCompletionTime,
 	}, nil
+}
+
+// ResetPendingAndProcessingTasksToFailed 将所有pending和processing任务状态重置为failed
+func (sm *StatusManager) ResetPendingAndProcessingTasksToFailed(ctx context.Context) error {
+	// 使用SCAN命令避免阻塞
+	iter := sm.client.Scan(ctx, 0, "request:id:*", 0).Iterator()
+
+	var updatedCount int
+	for iter.Next(ctx) {
+		key := iter.Val()
+
+		// 获取任务状态数据
+		data, err := sm.client.Get(ctx, key).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue // 键可能已过期
+			}
+			return fmt.Errorf("failed to get task data for key %s: %w", key, err)
+		}
+
+		// 解析任务状态
+		var status types.FileStatusResponseData
+		if err := json.Unmarshal([]byte(data), &status); err != nil {
+			continue // 跳过格式错误的数据
+		}
+
+		// 检查是否为pending或processing状态
+		if status.Process == "pending" || status.Process == "processing" {
+			// 更新状态为failed
+			status.Process = "failed"
+
+			// 序列化更新后的状态数据
+			updatedData, err := json.Marshal(status)
+			if err != nil {
+				logx.Errorf("failed to marshal updated status data for key %s: %v", key, err)
+				continue
+			}
+
+			// 更新Redis中的状态
+			if err := sm.client.Set(ctx, key, updatedData, defaultExpiration).Err(); err != nil {
+				logx.Errorf("failed to update status to failed for key %s: %v", key, err)
+				continue
+			}
+
+			updatedCount++
+			logx.Infof("Reset task %s from %s to failed", strings.TrimPrefix(key, "request:id:"), status.Process)
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("redis scan error: %w", err)
+	}
+
+	logx.Infof("Successfully reset %d pending/processing tasks to failed", updatedCount)
+	return nil
 }

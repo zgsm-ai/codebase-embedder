@@ -33,14 +33,13 @@ func taskHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			fmt.Sscanf(fileTotals, "%d", &req.FileTotals)
 		}
 
-		// 解析并获取RequestId（可选参数）
+		// 解析并获取RequestId（必填参数）
 		req.RequestId = r.Header.Get("X-Request-ID")
-		if req.RequestId != "" {
-			fmt.Printf("Received RequestId: %s\n", req.RequestId)
-		} else {
-			req.RequestId = "xxxxxxx-xxxxxxxxx-xxxxx"
-			fmt.Printf("not Received RequestId: using")
+		if req.RequestId == "" {
+			response.Error(w, errors.New("missing required header: X-Request-ID"))
+			return
 		}
+		fmt.Printf("Received RequestId: %s\n", req.RequestId)
 
 		// 验证必填字段
 		if req.ClientId == "" {
