@@ -18,7 +18,7 @@ RUN make build
 
 # 
 
-FROM golang:1.24.4
+FROM golang:1.24.4 AS STANDARD
 
 # RUN apk --no-cache add ca-certificates tzdata
 # RUN apk add --no-cache bash
