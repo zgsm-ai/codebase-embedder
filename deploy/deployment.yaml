@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
       - name: codebase-embedder
-        image: zgsm/codebase-embedder:2025.07.16.1
+        image: zgsm/codebase-embedder:v0.0.1
         imagePullPolicy: IfNotPresent
         command:
           - /app/server

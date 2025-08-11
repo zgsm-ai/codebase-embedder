@@ -50,41 +50,63 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 }
 
 func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (resp *types.IndexTaskResponseData, err error) {
+	startTime := time.Now()
 	clientId := req.ClientId
 	clientPath := req.CodebasePath
 	codebaseName := req.CodebaseName
 	uploadToken := req.UploadToken
 
-	l.Logger.Debugf("SubmitTask request: %s, %s, %s, uploadToken: %s", clientId, clientPath, codebaseName, uploadToken)
+	l.Logger.Infof("SubmitTask 开始执行 - RequestId: %s, ClientId: %s, CodebasePath: %s, CodebaseName: %s",
+		req.RequestId, clientId, clientPath, codebaseName)
+	l.Logger.Debugf("SubmitTask uploadToken: %s", uploadToken)
+
+	// 在函数结束时记录执行时间
+	defer func() {
+		duration := time.Since(startTime)
+		l.Logger.Infof("SubmitTask 执行完成 - RequestId: %s, 总耗时: %v", req.RequestId, duration)
+	}()
 
 	// 验证uploadToken的有效性
+	l.Logger.Infof("验证uploadToken开始 - RequestId: %s", req.RequestId)
 	if err := l.validateUploadToken(uploadToken); err != nil {
+		l.Logger.Errorf("验证uploadToken失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("验证uploadToken成功 - RequestId: %s", req.RequestId)
 
 	userUid := utils.ParseJWTUserInfo(r, l.svcCtx.Config.Auth.UserInfoHeader)
+	l.Logger.Infof("解析用户信息完成 - RequestId: %s, UserUid: %s", req.RequestId, userUid)
 
 	// 查找代码库记录，不存在则初始化
+	l.Logger.Infof("开始初始化代码库 - RequestId: %s, ClientId: %s, CodebasePath: %s", req.RequestId, clientId, clientPath)
 	codebase, err := l.initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName)
 	if err != nil {
+		l.Logger.Errorf("初始化代码库失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("初始化代码库成功 - RequestId: %s, CodebaseId: %d", req.RequestId, codebase.ID)
 
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
 	// 获取分布式锁
 	// mux, err := l.acquireTaskLock(ctx, codebase.ID)
+	l.Logger.Infof("开始获取分布式锁 - RequestId: %s", req.RequestId)
 	mux, err := l.acquireTaskLock(ctx, req.RequestId)
 	if err != nil {
+		l.Logger.Errorf("获取分布式锁失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("获取分布式锁成功 - RequestId: %s", req.RequestId)
 	defer l.svcCtx.DistLock.Unlock(ctx, mux)
 
 	// 处理上传的ZIP文件
+	l.Logger.Infof("开始处理上传的ZIP文件 - RequestId: %s", req.RequestId)
 	files, fileCount, metadata, err := l.processUploadedZipFile(r)
 	if err != nil {
+		l.Logger.Errorf("处理ZIP文件失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("处理ZIP文件成功 - RequestId: %s, 文件数量: %d", req.RequestId, fileCount)
 
 	// 遍历任务并分类
 	var addTasks, deleteTasks, modifyTasks []string
@@ -119,24 +141,36 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		}
 	}
 
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d",
+		len(addTasks), len(deleteTasks), len(modifyTasks))
+
 	// 更新代码库信息
+	l.Logger.Infof("开始更新代码库信息 - RequestId: %s, CodebaseId: %d, 文件数量: %d", req.RequestId, codebase.ID, fileCount)
 	if err := l.updateCodebaseInfo(codebase, fileCount, int64(req.FileTotals)); err != nil {
+		l.Logger.Errorf("更新代码库信息失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("更新代码库信息成功 - RequestId: %s", req.RequestId)
 
 	// 生成请求ID
 	requestId := l.generateRequestId(req.RequestId, clientId, codebase.Name)
+	l.Logger.Infof("生成请求ID - RequestId: %s, 新RequestId: %s", req.RequestId, requestId)
 
 	// 提交索引任务
+	l.Logger.Infof("开始提交索引任务 - RequestId: %s", req.RequestId)
 	if err := l.submitIndexTask(ctx, codebase, clientId, requestId, mux, files, metadata); err != nil {
+		l.Logger.Errorf("提交索引任务失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	l.Logger.Infof("提交索引任务成功 - RequestId: %s", req.RequestId)
 
 	// 初始化文件处理状态
+	l.Logger.Infof("开始初始化文件处理状态 - RequestId: %s", req.RequestId)
 	if err := l.initializeFileStatus(ctx, req.RequestId); err != nil {
-		l.Logger.Errorf("failed to set initial file status in redis with requestId %s: %v", req.RequestId, err)
+		l.Logger.Errorf("初始化文件处理状态失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		// 不返回错误，继续处理
 	}
+	l.Logger.Infof("初始化文件处理状态成功 - RequestId: %s", req.RequestId)
 
 	return &types.IndexTaskResponseData{TaskId: req.RequestId}, nil
 }
@@ -445,6 +479,9 @@ func (l *TaskLogic) generateRequestId(requestId, clientId, codebaseName string) 
 
 // submitIndexTask 提交索引任务
 func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, mux *redsync.Mutex, files map[string][]byte, metadata *types.SyncMetadata) error {
+	startTime := time.Now()
+	l.Logger.Infof("开始创建索引任务 - RequestId: %s, CodebaseId: %d, 文件数量: %d", requestId, codebase.ID, len(files))
+
 	task := &job.IndexTask{
 		SvcCtx:  l.svcCtx,
 		LockMux: mux,
@@ -460,17 +497,28 @@ func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebas
 		},
 	}
 
+	l.Logger.Infof("开始提交任务到任务池 - RequestId: %s, 超时时间: %v", requestId, l.svcCtx.Config.IndexTask.GraphTask.Timeout)
 	err := l.svcCtx.TaskPool.Submit(func() {
+		taskStartTime := time.Now()
+		l.Logger.Infof("任务开始执行 - RequestId: %s", requestId)
+
 		taskTimeout, cancelFunc := context.WithTimeout(context.Background(), l.svcCtx.Config.IndexTask.GraphTask.Timeout)
 		traceCtx := context.WithValue(taskTimeout, tracer.Key, tracer.TaskTraceId(int(codebase.ID)))
 		defer cancelFunc()
+
 		task.Run(traceCtx)
+
+		taskDuration := time.Since(taskStartTime)
+		l.Logger.Infof("任务执行完成 - RequestId: %s, 任务执行耗时: %v", requestId, taskDuration)
 	})
 
+	submitDuration := time.Since(startTime)
 	if err != nil {
+		l.Logger.Errorf("提交任务到任务池失败 - RequestId: %s, 提交耗时: %v, 错误: %v", requestId, submitDuration, err)
 		return fmt.Errorf("index task submit failed, err:%w", err)
 	}
 
+	l.Logger.Infof("成功提交任务到任务池 - RequestId: %s, 提交耗时: %v", requestId, submitDuration)
 	tracer.WithTrace(ctx).Infof("index task submit successfully.")
 	return nil
 }
