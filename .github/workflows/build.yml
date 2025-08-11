@@ -79,4 +79,4 @@ jobs:
           target: STANDARD
           platforms: linux/amd64
           push: true
-          tags: ${{ secrets.DOCKERHUB_REPOSITORY }}/casdoor:${{ steps.version.outputs.version }},${{ secrets.DOCKERHUB_REPOSITORY }}/casdoor:latest 
+          tags: ${{ secrets.DOCKERHUB_REPOSITORY }}/codebase-embedder:${{ steps.version.outputs.version }},${{ secrets.DOCKERHUB_REPOSITORY }}/codebase-embedder:latest 
