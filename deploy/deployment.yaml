@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: codebase-embedder-config
-  namespace: shenma
+  namespace: costrict
 data:
   conf.yaml: |
     Name: codebase-embedder
@@ -80,7 +80,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: codebase-embedder
-  namespace: shenma
+  namespace: costrict
   labels:
     app: codebase-embedder
 spec:
@@ -95,7 +95,7 @@ spec:
     spec:
       containers:
       - name: codebase-embedder
-        image: zgsm/codebase-embedder:2025.06.26.5
+        image: zgsm/codebase-embedder:2025.07.16.1
         imagePullPolicy: IfNotPresent
         command:
           - /app/server
@@ -137,12 +137,14 @@ spec:
         - name: app-conf
           configMap:
             name: codebase-embedder-config
+        - name: logs
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: codebase-embedder-svc
-  namespace: shenma
+  namespace: costrict
 spec:
   ports:
   - port: 8888
