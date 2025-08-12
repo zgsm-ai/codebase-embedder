@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"path/filepath"
+
 	sitterkotlin "github.com/tree-sitter-grammars/tree-sitter-kotlin/bindings/go"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	sittercsharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
@@ -15,7 +17,6 @@ import (
 	sitterrust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
 	sitterscala "github.com/tree-sitter/tree-sitter-scala/bindings/go"
 	sittertypescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
-	"path/filepath"
 )
 
 // Language represents a programming language.
@@ -36,6 +37,7 @@ const (
 	PHP        Language = "php"
 	Kotlin     Language = "kotlin"
 	Scala      Language = "scala"
+	Markdown   Language = "markdown"
 )
 
 // LanguageConfig holds the configuration for a language
@@ -144,6 +146,14 @@ var languageConfigs = []*LanguageConfig{
 			return sitter.NewLanguage(sitterscala.Language())
 		},
 		SupportedExts: []string{".scala"},
+	},
+	{
+		Language: Markdown,
+		SitterLanguage: func() *sitter.Language {
+			// Markdown 没有对应的 tree-sitter 解析器，返回 nil
+			return nil
+		},
+		SupportedExts: []string{".md"},
 	},
 }
 

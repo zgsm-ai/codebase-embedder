@@ -85,4 +85,9 @@ var languageChunkNodeKind = map[parser.Language][]string{
 		"trait_declaration",   // 特质声明
 		"object_declaration",  // 对象声明
 	},
+	parser.Markdown: {
+		"section",    // 章节标题（# ## ### 等）
+		"code_block", // 代码块
+		"paragraph",  // 段落
+	},
 }

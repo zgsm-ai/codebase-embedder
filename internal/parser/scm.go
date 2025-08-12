@@ -3,8 +3,9 @@ package parser
 import (
 	"embed"
 	"fmt"
-	sitter "github.com/tree-sitter/go-tree-sitter"
 	"path/filepath"
+
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 //go:embed queries/*/*.scm
@@ -30,6 +31,12 @@ func loadScm() error {
 		// 校验query
 		langParser := sitter.NewParser()
 		sitterLang := lang.SitterLanguage()
+		// 检查语言是否为nil（例如Markdown语言没有对应的tree-sitter解析器）
+		if sitterLang == nil {
+			// 对于不支持的语言，跳过查询加载
+			langParser.Close()
+			continue
+		}
 		err := langParser.SetLanguage(sitterLang)
 		if err != nil {
 			return fmt.Errorf("failed to init language parser %s: %w", lang.Language, err)

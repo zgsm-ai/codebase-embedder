@@ -3,6 +3,7 @@ package embedding
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/tiktoken-go/tokenizer"
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -40,6 +41,12 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 	if err != nil {
 		return nil, err
 	}
+
+	// 特殊处理 markdown 文件
+	if language.Language == parser.Markdown {
+		return p.splitMarkdownFile(codeFile)
+	}
+
 	sitterParser := sitter.NewParser()
 
 	// 设置解析器语言（复用已创建的Parser）
@@ -273,4 +280,121 @@ func countLines(s string) int {
 	}
 
 	return count
+}
+
+// splitMarkdownFile 将 markdown 文件分割成多个代码块
+func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
+	content := string(codeFile.Content)
+	lines := strings.Split(content, "\n")
+
+	var chunks []*types.CodeChunk
+	var currentChunk strings.Builder
+	var currentLine int
+	var inCodeBlock bool
+
+	for i, line := range lines {
+		// 检查是否是代码块开始或结束
+		if strings.HasPrefix(line, "```") {
+			if inCodeBlock {
+				// 代码块结束
+				currentChunk.WriteString(line + "\n")
+				chunkContent := currentChunk.String()
+				tokenCount := p.countToken([]byte(chunkContent))
+
+				chunks = append(chunks, &types.CodeChunk{
+					CodebaseId:   codeFile.CodebaseId,
+					CodebasePath: codeFile.CodebasePath,
+					CodebaseName: codeFile.CodebaseName,
+					Content:      []byte(chunkContent),
+					FilePath:     codeFile.Path,
+					Range:        []int{currentLine, 0, i, len(line)},
+					TokenCount:   tokenCount,
+				})
+
+				currentChunk.Reset()
+				inCodeBlock = false
+			} else {
+				// 代码块开始，先保存之前的内容
+				if currentChunk.Len() > 0 {
+					chunkContent := currentChunk.String()
+					tokenCount := p.countToken([]byte(chunkContent))
+
+					chunks = append(chunks, &types.CodeChunk{
+						CodebaseId:   codeFile.CodebaseId,
+						CodebasePath: codeFile.CodebasePath,
+						CodebaseName: codeFile.CodebaseName,
+						Content:      []byte(chunkContent),
+						FilePath:     codeFile.Path,
+						Range:        []int{currentLine, 0, i - 1, len(lines[i-1])},
+						TokenCount:   tokenCount,
+					})
+
+					currentChunk.Reset()
+				}
+
+				currentChunk.WriteString(line + "\n")
+				currentLine = i
+				inCodeBlock = true
+			}
+			continue
+		}
+
+		// 检查是否是标题（# ## ### 等）
+		if !inCodeBlock && strings.HasPrefix(line, "#") {
+			// 保存之前的内容
+			if currentChunk.Len() > 0 {
+				chunkContent := currentChunk.String()
+				tokenCount := p.countToken([]byte(chunkContent))
+
+				chunks = append(chunks, &types.CodeChunk{
+					CodebaseId:   codeFile.CodebaseId,
+					CodebasePath: codeFile.CodebasePath,
+					CodebaseName: codeFile.CodebaseName,
+					Content:      []byte(chunkContent),
+					FilePath:     codeFile.Path,
+					Range:        []int{currentLine, 0, i - 1, len(lines[i-1])},
+					TokenCount:   tokenCount,
+				})
+
+				currentChunk.Reset()
+			}
+
+			currentChunk.WriteString(line + "\n")
+			currentLine = i
+			continue
+		}
+
+		// 普通内容
+		currentChunk.WriteString(line + "\n")
+
+		// 检查当前块是否超过最大 token 数量
+		if currentChunk.Len() > 0 {
+			tokenCount := p.countToken([]byte(currentChunk.String()))
+			if tokenCount > p.splitOptions.MaxTokensPerChunk {
+				chunkContent := currentChunk.String()
+				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine)
+				chunks = append(chunks, subChunks...)
+				currentChunk.Reset()
+				currentLine = i + 1
+			}
+		}
+	}
+
+	// 添加最后一块内容
+	if currentChunk.Len() > 0 {
+		chunkContent := currentChunk.String()
+		tokenCount := p.countToken([]byte(chunkContent))
+
+		chunks = append(chunks, &types.CodeChunk{
+			CodebaseId:   codeFile.CodebaseId,
+			CodebasePath: codeFile.CodebasePath,
+			CodebaseName: codeFile.CodebaseName,
+			Content:      []byte(chunkContent),
+			FilePath:     codeFile.Path,
+			Range:        []int{currentLine, 0, len(lines) - 1, len(lines[len(lines)-1])},
+			TokenCount:   tokenCount,
+		})
+	}
+
+	return chunks, nil
 }
