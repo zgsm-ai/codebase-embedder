@@ -431,7 +431,7 @@ func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName strin
 		CodebasePath  string                 `json:"codebasePath"`
 		CodebaseName  string                 `json:"codebaseName"`
 		ExtraMetadata map[string]interface{} `json:"extraMetadata"`
-		FileList      map[string]string      `json:"fileList"`
+		FileList      interface{}            `json:"fileList"` // 使用interface{}来兼容两种格式
 		Timestamp     int64                  `json:"timestamp"`
 	}
 
@@ -473,8 +473,48 @@ func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName strin
 	metadata.ClientId = tempMetadata.ClientId
 	metadata.CodebasePath = tempMetadata.CodebasePath
 	metadata.CodebaseName = tempMetadata.CodebaseName
-	metadata.FileList = tempMetadata.FileList
 	metadata.Timestamp = tempMetadata.Timestamp
+
+	// 处理FileList的两种格式
+	switch fileList := tempMetadata.FileList.(type) {
+	case map[string]interface{}:
+		// 格式1: "fileList":{"pkg/codegraph/analyzer/package_classifier/cpp_classifier.go":"add"}
+		l.Logger.Infof("检测到对象格式的fileList")
+		for filePath, operation := range fileList {
+			if opStr, ok := operation.(string); ok {
+				metadata.FileList[filePath] = opStr
+			} else {
+				l.Logger.Errorf("fileList中文件 %s 的操作类型不是字符串: %v", filePath, operation)
+			}
+		}
+	case []interface{}:
+		// 格式2: "fileList":[{"path":"pkg/codegraph/proto/codegraphpb/types.pb.go","targetPath":"","hash":"1755050845505","status":"modify","requestId":""}]
+		l.Logger.Infof("检测到数组格式的fileList")
+		for _, item := range fileList {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if path, ok := itemMap["path"].(string); ok {
+					// 优先使用status字段，如果没有则使用其他字段作为操作类型
+					var operation string
+					if status, ok := itemMap["status"].(string); ok {
+						operation = status
+					} else if operate, ok := itemMap["operate"].(string); ok {
+						operation = operate
+					} else {
+						operation = "unknown"
+						l.Logger.Errorf("fileList数组项中未找到status或operate字段: %v", itemMap)
+					}
+					metadata.FileList[path] = operation
+				} else {
+					l.Logger.Errorf("fileList数组项中缺少path字段: %v", itemMap)
+				}
+			} else {
+				l.Logger.Errorf("fileList数组项不是map类型: %v", item)
+			}
+		}
+	default:
+		l.Logger.Errorf("不支持的fileList格式: %T", tempMetadata.FileList)
+		return
+	}
 
 	l.Logger.Infof("从 %s 中提取到 %d 个文件:", fileName, len(metadata.FileList))
 

@@ -284,3 +284,102 @@ func (sm *StatusManager) ResetPendingAndProcessingTasksToFailed(ctx context.Cont
 	logx.Infof("Successfully reset %d pending/processing tasks to failed", updatedCount)
 	return nil
 }
+
+// ScanCompletedTasks 扫描已完成的任务
+func (sm *StatusManager) ScanCompletedTasks(ctx context.Context) ([]types.CompletedTaskInfo, error) {
+	var completedTasks []types.CompletedTaskInfo
+
+	// 使用SCAN命令避免阻塞
+	iter := sm.client.Scan(ctx, 0, "request:id:*", 0).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+
+		// 获取任务状态数据
+		data, err := sm.client.Get(ctx, key).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue // 键可能已过期
+			}
+			return nil, fmt.Errorf("failed to get task data for key %s: %w", key, err)
+		}
+
+		// 解析任务状态
+		var status types.FileStatusResponseData
+		if err := json.Unmarshal([]byte(data), &status); err != nil {
+			continue // 跳过格式错误的数据
+		}
+
+		// 过滤已完成的任务状态
+		if sm.isCompletedStatus(status.Process) {
+			taskInfo, err := sm.parseCompletedTaskInfo(key, status)
+			if err != nil {
+				continue
+			}
+			completedTasks = append(completedTasks, taskInfo)
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("redis scan error: %w", err)
+	}
+
+	// 按完成时间排序（最新的在前）
+	sort.Slice(completedTasks, func(i, j int) bool {
+		return completedTasks[i].CompletedTime.After(completedTasks[j].CompletedTime)
+	})
+
+	return completedTasks, nil
+}
+
+// isCompletedStatus 检查是否为已完成的状态
+func (sm *StatusManager) isCompletedStatus(status string) bool {
+	return status == "complete" || status == "success" || status == "failed" || status == "cancelled" || status == "timeout"
+}
+
+// parseCompletedTaskInfo 解析已完成任务信息
+func (sm *StatusManager) parseCompletedTaskInfo(key string, status types.FileStatusResponseData) (types.CompletedTaskInfo, error) {
+	// 从key中提取任务ID
+	taskId := strings.TrimPrefix(key, "request:id:")
+
+	// 解析任务状态数据中的时间信息
+	var completedTime time.Time
+
+	// 设置当前时间为完成时间
+	completedTime = time.Now()
+
+	// 尝试从文件列表中提取客户端ID
+	var clientId string
+	var fileCount int
+	var successCount, failedCount int
+
+	if len(status.FileList) > 0 {
+		// 统计文件状态
+		for _, file := range status.FileList {
+			fileCount++
+			if file.Status == "complete" || file.Status == "success" {
+				successCount++
+			} else if file.Status == "failed" {
+				failedCount++
+			}
+		}
+	}
+
+	// 计算成功率
+	var successRate float64
+	if fileCount > 0 {
+		successRate = float64(successCount) / float64(fileCount) * 100
+	}
+
+	return types.CompletedTaskInfo{
+		TaskId:        taskId,
+		ClientId:      clientId,
+		Status:        status.Process,
+		Process:       status.Process,
+		TotalProgress: status.TotalProgress,
+		CompletedTime: completedTime,
+		FileCount:     fileCount,
+		SuccessCount:  successCount,
+		FailedCount:   failedCount,
+		SuccessRate:   successRate,
+	}, nil
+}
