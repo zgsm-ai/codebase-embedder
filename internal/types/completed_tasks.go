@@ -29,3 +29,17 @@ type CompletedTasksData struct {
 	TotalTasks int                 `json:"totalTasks"` // 任务总数
 	Tasks      []CompletedTaskInfo `json:"tasks"`      // 任务列表
 }
+
+// FailedTasksResponse 失败任务查询响应
+type FailedTasksResponse struct {
+	Code    int              `json:"code"`    // 响应码
+	Message string           `json:"message"` // 响应消息
+	Success bool             `json:"success"` // 是否成功
+	Data    *FailedTasksData `json:"data"`    // 任务数据
+}
+
+// FailedTasksData 失败任务数据
+type FailedTasksData struct {
+	TotalTasks int                 `json:"totalTasks"` // 任务总数
+	Tasks      []CompletedTaskInfo `json:"tasks"`      // 任务列表
+}

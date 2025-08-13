@@ -333,7 +333,7 @@ func (sm *StatusManager) ScanCompletedTasks(ctx context.Context) ([]types.Comple
 
 // isCompletedStatus 检查是否为已完成的状态
 func (sm *StatusManager) isCompletedStatus(status string) bool {
-	return status == "complete" || status == "success" || status == "failed" || status == "cancelled" || status == "timeout"
+	return status == "completed"
 }
 
 // parseCompletedTaskInfo 解析已完成任务信息
@@ -356,7 +356,7 @@ func (sm *StatusManager) parseCompletedTaskInfo(key string, status types.FileSta
 		// 统计文件状态
 		for _, file := range status.FileList {
 			fileCount++
-			if file.Status == "complete" || file.Status == "success" {
+			if file.Status == "complete" {
 				successCount++
 			} else if file.Status == "failed" {
 				failedCount++
@@ -382,4 +382,55 @@ func (sm *StatusManager) parseCompletedTaskInfo(key string, status types.FileSta
 		FailedCount:   failedCount,
 		SuccessRate:   successRate,
 	}, nil
+}
+
+// ScanFailedTasks 扫描失败的任务
+func (sm *StatusManager) ScanFailedTasks(ctx context.Context) ([]types.CompletedTaskInfo, error) {
+	var failedTasks []types.CompletedTaskInfo
+
+	// 使用SCAN命令避免阻塞
+	iter := sm.client.Scan(ctx, 0, "request:id:*", 0).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+
+		// 获取任务状态数据
+		data, err := sm.client.Get(ctx, key).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue // 键可能已过期
+			}
+			return nil, fmt.Errorf("failed to get task data for key %s: %w", key, err)
+		}
+
+		// 解析任务状态
+		var status types.FileStatusResponseData
+		if err := json.Unmarshal([]byte(data), &status); err != nil {
+			continue // 跳过格式错误的数据
+		}
+
+		// 过滤失败的任务状态
+		if sm.isFailedStatus(status.Process) {
+			taskInfo, err := sm.parseCompletedTaskInfo(key, status)
+			if err != nil {
+				continue
+			}
+			failedTasks = append(failedTasks, taskInfo)
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("redis scan error: %w", err)
+	}
+
+	// 按完成时间排序（最新的在前）
+	sort.Slice(failedTasks, func(i, j int) bool {
+		return failedTasks[i].CompletedTime.After(failedTasks[j].CompletedTime)
+	})
+
+	return failedTasks, nil
+}
+
+// isFailedStatus 检查是否为失败的状态
+func (sm *StatusManager) isFailedStatus(status string) bool {
+	return status == "failed"
 }

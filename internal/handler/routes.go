@@ -119,5 +119,17 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		rest.WithPrefix("/codebase-embedder"),
 	)
 	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/tasks/completed")
+	// 添加失败任务查询接口路由
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/api/v1/tasks/failed",
+				Handler: FailedTasksHandler(serverCtx),
+			},
+		},
+		rest.WithPrefix("/codebase-embedder"),
+	)
+	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/tasks/failed")
 	log.Println("[DEBUG] 路由注册完成")
 }
