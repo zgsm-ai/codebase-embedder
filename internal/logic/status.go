@@ -40,6 +40,10 @@ func (l *StatusLogic) GetFileStatus(req *types.FileStatusRequest) (*types.FileSt
 		return redisStatus, nil
 	}
 
-	// 如果没有找到记录，返回错误并说明原因
-	return nil, fmt.Errorf("file status not found for request ID: %s, please ensure the file processing has been initiated", requestId)
+	// 如果没有找到记录，返回默认构造
+	return &types.FileStatusResponseData{
+		Process:       "failed",
+		TotalProgress: 0,
+		FileList:      []types.FileStatusItem{},
+	}, nil
 }
