@@ -136,6 +136,8 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 						status.Process = "processing"
 						status.TotalProgress = progress
 
+						tracer.WithTrace(ctx).Infof(" requestid %s  ,finish before %v", e.requestId, status.FileList)
+
 						// 将这批文件的状态添加到FileList中
 						for _, filePath := range completedFiles {
 							// 检查文件是否已在FileList中
@@ -157,6 +159,9 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 								})
 							}
 						}
+
+						tracer.WithTrace(ctx).Infof(" requestid %s  ,finish %v", e.requestId, status.FileList)
+
 					})
 					if err != nil {
 						tracer.WithTrace(ctx).Errorf("failed to update progress: %v", err)

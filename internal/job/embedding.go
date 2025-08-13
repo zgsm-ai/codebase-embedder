@@ -38,18 +38,6 @@ type fileProcessResult struct {
 	path   string
 }
 
-// extractFileOperations 从同步元数据中提取文件操作类型
-func extractFileOperations(metadata *types.SyncMetadata) map[string]string {
-	operations := make(map[string]string)
-
-	// 遍历FileList，该字段存储了文件路径到操作类型的映射
-	for filePath, operation := range metadata.FileList {
-		operations[filePath] = operation
-	}
-
-	return operations
-}
-
 func (t *embeddingProcessor) Process(ctx context.Context) error {
 	tracer.WithTrace(ctx).Infof("start to execute embedding task, codebase: %s RequestId %s", t.params.CodebaseName, t.params.RequestId)
 	start := time.Now()

@@ -26,6 +26,17 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 )
 
+func extractFileOperations(metadata *types.SyncMetadata) map[string]string {
+	operations := make(map[string]string)
+
+	// 遍历FileList，该字段存储了文件路径到操作类型的映射
+	for filePath, operation := range metadata.FileList {
+		operations[filePath] = operation
+	}
+
+	return operations
+}
+
 type TaskLogic struct {
 	logx.Logger
 	ctx          context.Context
@@ -130,6 +141,39 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d",
 		len(addTasks), len(deleteTasks), len(modifyTasks))
 
+	/////////////////////////////////////////////////////////////
+	//初始化任务状态
+	/////////////////////////////////////////////
+
+	fileOperations := make(map[string]string)
+	if metadata != nil {
+		fileOperations = extractFileOperations(metadata)
+	}
+
+	// 状态修改为处理中
+	l.svcCtx.StatusManager.UpdateFileStatus(ctx, req.RequestId,
+		func(status *types.FileStatusResponseData) {
+			status.Process = "processing"
+			status.TotalProgress = 0
+			var fileStatusItems []types.FileStatusItem
+
+			for path, _ := range files {
+				fileStatusItem := types.FileStatusItem{
+					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
+					Status:  "processing",
+					Operate: fileOperations[path],
+				}
+				fileStatusItems = append(fileStatusItems, fileStatusItem)
+			}
+
+			status.FileList = fileStatusItems
+			l.Logger.Infof("初始化状态： - RequestId: %s , %v", req.RequestId, status.FileList)
+		})
+
+	/////////////////////////////////////////////////////////////
+	//执行任务
+	/////////////////////////////////////////////
+
 	// 如果有删除任务，从向量数据库中删除对应的文件
 	if len(deleteTasks) > 0 {
 		l.Logger.Infof("开始从向量数据库中删除 %d 个文件", len(deleteTasks))
@@ -152,25 +196,32 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	}
 	l.Logger.Infof("更新代码库信息成功 - RequestId: %s", req.RequestId)
 
-	// 生成请求ID
-	requestId := l.generateRequestId(req.RequestId, clientId, codebase.Name)
-	l.Logger.Infof("生成请求ID - RequestId: %s, 新RequestId: %s", req.RequestId, requestId)
-
 	// 提交索引任务
-	l.Logger.Infof("开始提交索引任务 - RequestId: %s", req.RequestId)
-	if err := l.submitIndexTask(ctx, codebase, clientId, requestId, mux, files, metadata); err != nil {
-		l.Logger.Errorf("提交索引任务失败 - RequestId: %s, 错误: %v", req.RequestId, err)
-		return nil, err
-	}
-	l.Logger.Infof("提交索引任务成功 - RequestId: %s", req.RequestId)
+	l.Logger.Infof("开始提交索引任务 - RequestId: %s, 文件数量: %d", req.RequestId, len(files))
 
-	// 初始化文件处理状态
-	l.Logger.Infof("开始初始化文件处理状态 - RequestId: %s", req.RequestId)
-	if err := l.initializeFileStatus(ctx, req.RequestId); err != nil {
-		l.Logger.Errorf("初始化文件处理状态失败 - RequestId: %s, 错误: %v", req.RequestId, err)
-		// 不返回错误，继续处理
+	// 检查文件处理个数是否为0，如果为0则标识完成状态，不提交submitIndexTask任务
+	if len(files) == 0 {
+		l.Logger.Infof("文件处理个数为0，直接标识完成状态 - RequestId: %s", req.RequestId)
+
+		l.svcCtx.StatusManager.UpdateFileStatus(ctx, req.RequestId, func(status *types.FileStatusResponseData) {
+			status.Process = "processing"
+			status.TotalProgress = 100
+
+			for i, _ := range status.FileList {
+				status.FileList[i].Status = "completed"
+			}
+
+		})
+
+		l.Logger.Infof("初始化文件处理状态为完成成功 - RequestId: %s", req.RequestId)
+	} else {
+		// 文件数量大于0，正常提交索引任务
+		if err := l.submitIndexTask(ctx, codebase, clientId, req.RequestId, mux, files, metadata); err != nil {
+			l.Logger.Errorf("提交索引任务失败 - RequestId: %s, 错误: %v", req.RequestId, err)
+			return nil, err
+		}
+		l.Logger.Infof("提交索引任务成功 - RequestId: %s", req.RequestId)
 	}
-	l.Logger.Infof("初始化文件处理状态成功 - RequestId: %s", req.RequestId)
 
 	return &types.IndexTaskResponseData{TaskId: req.RequestId}, nil
 }
@@ -469,14 +520,6 @@ func (l *TaskLogic) updateCodebaseInfo(codebase *model.Codebase, fileCount int, 
 	return nil
 }
 
-// generateRequestId 生成请求ID
-func (l *TaskLogic) generateRequestId(requestId, clientId, codebaseName string) string {
-	if requestId == "" {
-		return fmt.Sprintf("%s-%s-%d", clientId, codebaseName, time.Now().Unix())
-	}
-	return requestId
-}
-
 // submitIndexTask 提交索引任务
 func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, mux *redsync.Mutex, files map[string][]byte, metadata *types.SyncMetadata) error {
 	startTime := time.Now()
@@ -496,6 +539,12 @@ func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebas
 			TotalFiles:   len(files),
 		},
 	}
+
+	runningTasks := l.svcCtx.TaskPool.Running()
+	taskCapacity := l.svcCtx.TaskPool.Cap()
+	l.Logger.Infof("任务池状态 - RequestId: %s, 正在运行任务: %d, 任务容量: %d", requestId, runningTasks, taskCapacity)
+
+	// 使用任务池提交任务
 
 	l.Logger.Infof("开始提交任务到任务池 - RequestId: %s, 超时时间: %v", requestId, l.svcCtx.Config.IndexTask.GraphTask.Timeout)
 	err := l.svcCtx.TaskPool.Submit(func() {
@@ -521,18 +570,6 @@ func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebas
 	l.Logger.Infof("成功提交任务到任务池 - RequestId: %s, 提交耗时: %v", requestId, submitDuration)
 	tracer.WithTrace(ctx).Infof("index task submit successfully.")
 	return nil
-}
-
-// initializeFileStatus 初始化文件处理状态
-func (l *TaskLogic) initializeFileStatus(ctx context.Context, requestId string) error {
-	initialStatus := &types.FileStatusResponseData{
-		Process:       "pending",
-		TotalProgress: 0,
-		FileList:      []types.FileStatusItem{},
-	}
-
-	// 使用RequestId作为键存储状态
-	return l.svcCtx.StatusManager.SetFileStatusByRequestId(ctx, requestId, initialStatus)
 }
 
 func (l *TaskLogic) initCodebaseIfNotExists(clientId, clientPath, userUid, codebaseName string) (*model.Codebase, error) {

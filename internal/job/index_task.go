@@ -3,7 +3,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-redsync/redsync/v4"
@@ -30,7 +29,7 @@ type IndexTaskParams struct {
 	TotalFiles   int                 // 文件总数
 }
 
-func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool) {
+func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool) {
 	start := time.Now()
 	tracer.WithTrace(ctx).Infof("index task started")
 
@@ -40,64 +39,20 @@ func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool, graphTaskOk bool
 			tracer.WithTrace(ctx).Errorf("index task unlock failed, key %s, err:%v", i.LockMux.Name(), err)
 		}
 	}()
-
-	var wg sync.WaitGroup
-	wg.Add(2) // 两个待等待的任务
-
-	var embedErr error
-
 	// 启动嵌入任务
-	go func() {
-		defer wg.Done()
-		embedErr = i.buildEmbedding(ctx)
-		if embedErr != nil {
-			tracer.WithTrace(ctx).Errorf("embedding task failed:%v", embedErr)
-		}
-	}()
-
-	// 等待两个任务完成
-	wg.Wait()
+	embedErr := i.buildEmbedding(ctx)
+	if embedErr != nil {
+		tracer.WithTrace(ctx).Errorf("embedding task failed:%v", embedErr)
+	}
 
 	embedTaskOk = embedErr == nil
 
-	tracer.WithTrace(ctx).Infof("index task end, cost %d ms. embedding ok? %t, graph ok? %t",
-		time.Since(start).Milliseconds(), embedTaskOk, graphTaskOk)
+	tracer.WithTrace(ctx).Infof("index task end, cost %d ms. embedding ok? %t",
+		time.Since(start).Milliseconds(), embedTaskOk)
 	return
 }
 
 func (i *IndexTask) buildEmbedding(ctx context.Context) error {
-
-	// for filePath, operation := range i.Params.Metadata.FileList {
-	// 	tracer.WithTrace(ctx).Infof("------------------------------------, %s :%s ms.", filePath, operation)
-	// }
-
-	fileOperations := make(map[string]string)
-	if i.Params.Metadata != nil {
-		fileOperations = extractFileOperations(i.Params.Metadata)
-	}
-
-	// tracer.WithTrace(ctx).Infof("------------------------------------, %v ms.", fileOperations)
-
-	// 状态修改为处理中
-	i.SvcCtx.StatusManager.UpdateFileStatus(ctx, i.Params.RequestId,
-		func(status *types.FileStatusResponseData) {
-			status.Process = "processing"
-			status.TotalProgress = 0
-			var fileStatusItems []types.FileStatusItem
-
-			for path, _ := range i.Params.Files {
-				fileStatusItem := types.FileStatusItem{
-					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
-					Status:  "processing",
-					Operate: fileOperations[path],
-				}
-				fileStatusItems = append(fileStatusItems, fileStatusItem)
-			}
-
-			status.FileList = fileStatusItems
-
-		})
-
 	start := time.Now()
 
 	// 添加日志来跟踪参数
