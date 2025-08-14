@@ -11,7 +11,9 @@ type VectorStoreConf struct {
 	Embedder   EmbedderConf
 	Reranker   RerankerConf
 	// 具体实现配置
-	Weaviate WeaviateConf // Weaviate配置
+	Weaviate        WeaviateConf // Weaviate配置
+	FetchSourceCode bool         `json:",default=false"` // 是否获取源码
+	BaseURL         string       `json:",optional"`      // 获取代码内容的基础URL
 }
 
 // WeaviateConf Weaviate向量数据库配置

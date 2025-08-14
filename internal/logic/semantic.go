@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
@@ -60,7 +61,7 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
 	documents, err := l.svcCtx.VectorStore.Query(ctx, req.Query, topK,
-		vector.Options{CodebaseId: codebase.ID,
+		vector.Options{CodebaseId: codebase.ID, ClientId: clientId,
 			CodebasePath: codebase.Path, CodebaseName: codebase.Name})
 	if err != nil {
 		return nil, err

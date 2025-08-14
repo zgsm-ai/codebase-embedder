@@ -31,6 +31,7 @@ type Options struct {
 	CodebasePath string
 	CodebaseName string
 	TotalFiles   int
+	ClientId     string
 }
 
 func NewVectorStore(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Store, error) {

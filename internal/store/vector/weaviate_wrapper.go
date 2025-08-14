@@ -5,8 +5,13 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"net/url"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -243,7 +248,7 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 		return nil, fmt.Errorf("query weaviate failed: %w", err)
 	}
 
-	items, err := r.unmarshalSimilarSearchResponse(res)
+	items, err := r.unmarshalSimilarSearchResponse(res, options.CodebasePath, options.ClientId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -251,7 +256,7 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 	return items, nil
 }
 
-func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResponse) ([]*types.SemanticFileItem, error) {
+func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResponse, codebasePath, clientId string) ([]*types.SemanticFileItem, error) {
 	// Get the data for our class
 	data, ok := res.Data["Get"].(map[string]interface{})
 	if !ok {
@@ -276,10 +281,37 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 			continue
 		}
 
+		content := getStringValue(obj, Content)
+		filePath := getStringValue(obj, MetadataFilePath)
+
+		// 如果开启获取源码，则从MetadataRange中提取行号信息
+		if r.cfg.FetchSourceCode && content != "" && filePath != "" {
+			// 从MetadataRange中提取startLine和endLine
+			var startLine, endLine int
+			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
+				if first, ok := rangeValue[0].(float64); ok {
+					startLine = int(first)
+				}
+				if second, ok := rangeValue[2].(float64); ok {
+					endLine = int(second)
+				}
+			}
+
+			// 通过fetchCodeContent接口获取代码片段
+			if codebasePath != "" {
+				fetchedContent, err := fetchCodeContent(context.Background(), r.cfg, clientId, codebasePath, filePath, startLine, endLine)
+				if err == nil && fetchedContent != "" {
+					content = fetchedContent
+				}
+			}
+		}
+
+		fmt.Printf("[DEBUG] %s content: %s\n", filePath, content)
+
 		// Create SemanticFileItem with proper fields
 		item := &types.SemanticFileItem{
-			Content:  getStringValue(obj, Content),
-			FilePath: getStringValue(obj, MetadataFilePath),
+			Content:  content,
+			FilePath: filePath,
 			Score:    float32(getFloatValue(additional, "certainty")), // Convert float64 to float32
 		}
 
@@ -659,6 +691,64 @@ func (r *weaviateWrapper) Query(ctx context.Context, query string, topK int, opt
 	// topK
 	rerankedDocs = rerankedDocs[:int(math.Min(float64(topK), float64(len(rerankedDocs))))]
 	return rerankedDocs, nil
+}
+
+// fetchCodeContent 通过API获取代码片段的Content
+func fetchCodeContent(ctx context.Context, cfg config.VectorStoreConf, clientId, codebasePath, filePath string, startLine, endLine int) (string, error) {
+	// 构建API请求URL
+	baseURL := cfg.BaseURL
+
+	// 对参数进行URL编码
+	encodedCodebasePath := url.QueryEscape(codebasePath)
+
+	// 如果filePath是全路径，则与codebasePath拼接处理
+	var processedFilePath string
+	if strings.HasPrefix(filePath, "/") {
+		// filePath是全路径，直接使用
+		processedFilePath = filePath
+	} else {
+		// filePath是相对路径，与codebasePath拼接
+		processedFilePath = fmt.Sprintf("%s/%s", strings.TrimSuffix(codebasePath, "/"), filePath)
+	}
+
+	// 检查操作系统类型，如果是Windows则将路径转换为Windows格式
+	if runtime.GOOS == "windows" {
+		// 将Unix风格的路径转换为Windows风格
+		processedFilePath = filepath.FromSlash(processedFilePath)
+		// 确保路径是绝对路径格式
+		if !strings.HasPrefix(processedFilePath, "\\") && !strings.Contains(processedFilePath, ":") {
+			// 如果不是网络路径也不是驱动器路径，添加当前驱动器
+			processedFilePath = filepath.Join(filepath.VolumeName("."), processedFilePath)
+		}
+	}
+
+	encodedFilePath := url.QueryEscape(processedFilePath)
+
+	// 构建完整的请求URL
+	requestURL := fmt.Sprintf("%s?clientId=%s&codebasePath=%s&filePath=%s&startLine=%d&endLine=%d",
+		baseURL, clientId, encodedCodebasePath, encodedFilePath, startLine, endLine)
+
+	tracer.WithTrace(ctx).Infof("fetchCodeContent %s: ", requestURL)
+
+	// 发送HTTP GET请求
+	resp, err := http.Get(requestURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch code content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return string(body), nil
 }
 
 func (r *weaviateWrapper) createClassWithAutoTenantEnabled(client *goweaviate.Client) error {
