@@ -196,6 +196,13 @@ type VectorSummaryItem struct {
 
 // GetAllVectorsSummaryResponseData 获取所有向量信息汇总的响应
 type GetAllVectorsSummaryResponseData struct {
-	TotalCount int                 `json:"totalCount"` // 总代码库数量
-	Items      []*VectorSummaryItem `json:"items"`      // 代码库向量信息列表
+	TotalCount    int                 `json:"totalCount"`    // 总代码库数量
+	Items         []*VectorSummaryItem `json:"items"`         // 代码库向量信息列表
+	TaskPoolState *TaskPoolState      `json:"taskPoolState"` // 任务池状态
+}
+
+// TaskPoolState 任务池状态
+type TaskPoolState struct {
+	RunningTasks int `json:"runningTasks"` // 正在运行的任务数量
+	TaskCapacity int `json:"taskCapacity"` // 任务池容量
 }

@@ -140,9 +140,19 @@ func (l *VectorsSummaryLogic) VectorsSummary(req *types.GetAllVectorsSummaryRequ
 		}
 	}
 
+	// 获取任务池状态
+	runningTasks := l.svcCtx.TaskPool.Running()
+	taskCapacity := l.svcCtx.TaskPool.Cap()
+
+	taskPoolState := &types.TaskPoolState{
+		RunningTasks: runningTasks,
+		TaskCapacity: taskCapacity,
+	}
+
 	return &types.GetAllVectorsSummaryResponseData{
-		TotalCount: len(validItems),
-		Items:      validItems,
+		TotalCount:    len(validItems),
+		Items:         validItems,
+		TaskPoolState: taskPoolState,
 	}, nil
 }
 

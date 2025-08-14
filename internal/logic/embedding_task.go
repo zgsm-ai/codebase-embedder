@@ -67,9 +67,8 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	codebaseName := req.CodebaseName
 	uploadToken := req.UploadToken
 
-	l.Logger.Infof("SubmitTask 开始执行 - RequestId: %s, ClientId: %s, CodebasePath: %s, CodebaseName: %s",
-		req.RequestId, clientId, clientPath, codebaseName)
-	l.Logger.Debugf("SubmitTask uploadToken: %s", uploadToken)
+	l.Logger.Infof("SubmitTask 开始执行 - RequestId: %s, ClientId: %s, CodebasePath: %s, CodebaseName: %s,uploadToken: %s",
+		req.RequestId, clientId, clientPath, codebaseName, uploadToken)
 
 	// 在函数结束时记录执行时间
 	defer func() {
@@ -298,7 +297,7 @@ func (l *TaskLogic) extractZipFiles(file io.Reader) (map[string][]byte, int, *ty
 		return nil, 0, nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	// defer os.Remove(tempPath) // 清理临时文件
+	defer os.Remove(tempPath) // 清理临时文件
 
 	tracer.WithTrace(l.ctx).Infof("extractZipFiles tempPath %s", tempPath)
 
