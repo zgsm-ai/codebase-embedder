@@ -150,6 +150,8 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		fileOperations = extractFileOperations(metadata)
 	}
 
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d", len(addTasks), len(deleteTasks), len(modifyTasks))
+
 	// 状态修改为处理中
 	l.svcCtx.StatusManager.UpdateFileStatus(ctx, req.RequestId,
 		func(status *types.FileStatusResponseData) {
@@ -157,11 +159,22 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 			status.TotalProgress = 0
 			var fileStatusItems []types.FileStatusItem
 
+			// 添加任务
 			for path, _ := range files {
 				fileStatusItem := types.FileStatusItem{
 					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
 					Status:  "processing",
 					Operate: fileOperations[path],
+				}
+				fileStatusItems = append(fileStatusItems, fileStatusItem)
+			}
+
+			// 删除任务
+			for path, op := range fileOperations {
+				fileStatusItem := types.FileStatusItem{
+					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
+					Status:  "processing",
+					Operate: op,
 				}
 				fileStatusItems = append(fileStatusItems, fileStatusItem)
 			}
@@ -204,7 +217,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		l.Logger.Infof("文件处理个数为0，直接标识完成状态 - RequestId: %s", req.RequestId)
 
 		l.svcCtx.StatusManager.UpdateFileStatus(ctx, req.RequestId, func(status *types.FileStatusResponseData) {
-			status.Process = "processing"
+			status.Process = "completed"
 			status.TotalProgress = 100
 
 			for i, _ := range status.FileList {
@@ -411,7 +424,6 @@ func (l *TaskLogic) processShenmaSyncFile(zipFile *zip.File, shenmaSyncFiles map
 	// 额外输出到控制台，确保用户能看到
 	fmt.Printf("=== .shenma_sync文件内容 ===\n")
 	fmt.Printf("文件名: %s\n", zipFile.Name)
-	fmt.Printf("内容长度: %d 字节\n", len(content))
 	fmt.Printf("内容:\n%s\n", string(content))
 	fmt.Printf("========================\n\n")
 

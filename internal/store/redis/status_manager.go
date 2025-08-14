@@ -227,6 +227,7 @@ func (sm *StatusManager) parseTaskInfo(key string, status types.FileStatusRespon
 		StartTime:               startTime,
 		LastUpdateTime:          lastUpdateTime,
 		EstimatedCompletionTime: estimatedCompletionTime,
+		FileList:                status.FileList,
 	}, nil
 }
 
@@ -381,6 +382,7 @@ func (sm *StatusManager) parseCompletedTaskInfo(key string, status types.FileSta
 		SuccessCount:  successCount,
 		FailedCount:   failedCount,
 		SuccessRate:   successRate,
+		FileList:      status.FileList,
 	}, nil
 }
 
