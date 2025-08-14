@@ -38,6 +38,7 @@ Cleaner:
 
 Redis:
   Addr: 0.0.0.0:6379
+  DefaultExpiration: 1h
 
 MessageQueue:
   Type: redis

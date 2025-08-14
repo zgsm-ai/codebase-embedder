@@ -109,8 +109,8 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	svcCtx.Embedder = embedder
 	svcCtx.CodeSplitter = splitter
 	svcCtx.DistLock = lock
-	// 状态管理器
-	svcCtx.StatusManager = redisstore.NewStatusManager(client)
+	// 状态管理器 - 使用配置中的默认过期时间
+	svcCtx.StatusManager = redisstore.NewStatusManagerWithExpiration(client, c.Redis.DefaultExpiration)
 
 	// 向量知识库
 	vectorStore, err := vector.NewVectorStoreWithStatusManager(c.VectorStore, embedder, reranker, svcCtx.StatusManager, "")

@@ -18,19 +18,27 @@ const (
 	fileStatusPrefix = "file:status:"
 	// 请求ID键前缀
 	requestIdPrefix = "request:id:"
-	// 默认过期时间 - 24小时
-	defaultExpiration = 24 * time.Hour
 )
 
 // StatusManager 文件状态管理器
 type StatusManager struct {
-	client *redis.Client
+	client            *redis.Client
+	defaultExpiration time.Duration
 }
 
 // NewStatusManager 创建新的状态管理器
 func NewStatusManager(client *redis.Client) *StatusManager {
 	return &StatusManager{
-		client: client,
+		client:            client,
+		defaultExpiration: 24 * time.Hour, // 默认24小时，保持向后兼容
+	}
+}
+
+// NewStatusManagerWithExpiration 创建带有自定义过期时间的状态管理器
+func NewStatusManagerWithExpiration(client *redis.Client, expiration time.Duration) *StatusManager {
+	return &StatusManager{
+		client:            client,
+		defaultExpiration: expiration,
 	}
 }
 
@@ -44,7 +52,7 @@ func (sm *StatusManager) SetFileStatusByRequestId(ctx context.Context, requestId
 	}
 
 	// 设置到Redis，带过期时间
-	err = sm.client.Set(ctx, key, data, defaultExpiration).Err()
+	err = sm.client.Set(ctx, key, data, sm.defaultExpiration).Err()
 	if err != nil {
 		return fmt.Errorf("failed to set status in redis: %w", err)
 	}
@@ -268,7 +276,7 @@ func (sm *StatusManager) ResetPendingAndProcessingTasksToFailed(ctx context.Cont
 			}
 
 			// 更新Redis中的状态
-			if err := sm.client.Set(ctx, key, updatedData, defaultExpiration).Err(); err != nil {
+			if err := sm.client.Set(ctx, key, updatedData, sm.defaultExpiration).Err(); err != nil {
 				logx.Errorf("failed to update status to failed for key %s: %v", key, err)
 				continue
 			}

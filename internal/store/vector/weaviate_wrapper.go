@@ -1,9 +1,11 @@
 package vector
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -269,6 +271,72 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 	}
 
 	items := make([]*types.SemanticFileItem, 0, len(results))
+
+	// 如果开启获取源码，则收集所有需要获取的代码片段
+	var snippets []CodeSnippetRequest
+	var snippetInfoList []struct {
+		index     int
+		filePath  string
+		startLine int
+		endLine   int
+	}
+
+	// 第一遍遍历：收集所有需要获取源码的片段信息
+	for i, result := range results {
+		obj, ok := result.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		content := getStringValue(obj, Content)
+		filePath := getStringValue(obj, MetadataFilePath)
+
+		// 如果开启获取源码，则从MetadataRange中提取行号信息
+		if r.cfg.FetchSourceCode && content != "" && filePath != "" && codebasePath != "" {
+			// 从MetadataRange中提取startLine和endLine
+			var startLine, endLine int
+			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
+				if first, ok := rangeValue[0].(float64); ok {
+					startLine = int(first)
+				}
+				if second, ok := rangeValue[2].(float64); ok {
+					endLine = int(second)
+				}
+			}
+
+			// 添加到批量获取列表
+			snippets = append(snippets, CodeSnippetRequest{
+				FilePath:  filePath,
+				StartLine: startLine,
+				EndLine:   endLine,
+			})
+
+			snippetInfoList = append(snippetInfoList, struct {
+				index     int
+				filePath  string
+				startLine int
+				endLine   int
+			}{
+				index:     i,
+				filePath:  filePath,
+				startLine: startLine,
+				endLine:   endLine,
+			})
+		}
+	}
+
+	// 批量获取代码片段内容
+	var contentMap map[string]string
+	if len(snippets) > 0 && codebasePath != "" {
+		var err error
+		contentMap, err = fetchCodeContentsBatch(context.Background(), r.cfg, clientId, codebasePath, snippets, authorization)
+		if err != nil {
+			fmt.Printf("[DEBUG] 批量获取代码片段失败: %v\n", err)
+			contentMap = make(map[string]string)
+		}
+	}
+
+	// 第二遍遍历：构建最终的SemanticFileItem列表
 	for _, result := range results {
 		obj, ok := result.(map[string]interface{})
 		if !ok {
@@ -284,9 +352,9 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 		content := getStringValue(obj, Content)
 		filePath := getStringValue(obj, MetadataFilePath)
 
-		// 如果开启获取源码，则从MetadataRange中提取行号信息
-		if r.cfg.FetchSourceCode && content != "" && filePath != "" {
-			// 从MetadataRange中提取startLine和endLine
+		// 如果开启获取源码且有批量获取的内容，则使用获取到的内容
+		if r.cfg.FetchSourceCode && content != "" && filePath != "" && codebasePath != "" {
+			// 从MetadataRange中提取startLine和endLine（用于构建映射键）
 			var startLine, endLine int
 			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
 				if first, ok := rangeValue[0].(float64); ok {
@@ -297,12 +365,10 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 				}
 			}
 
-			// 通过fetchCodeContent接口获取代码片段
-			if codebasePath != "" {
-				fetchedContent, err := fetchCodeContent(context.Background(), r.cfg, clientId, codebasePath, filePath, startLine, endLine, authorization)
-				if err == nil && fetchedContent != "" {
-					content = fetchedContent
-				}
+			// 构建映射键并查找批量获取的内容
+			key := fmt.Sprintf("%s:%d-%d", filePath, startLine, endLine)
+			if fetchedContent, exists := contentMap[key]; exists && fetchedContent != "" {
+				content = fetchedContent
 			}
 		}
 
@@ -691,6 +757,111 @@ func (r *weaviateWrapper) Query(ctx context.Context, query string, topK int, opt
 	// topK
 	rerankedDocs = rerankedDocs[:int(math.Min(float64(topK), float64(len(rerankedDocs))))]
 	return rerankedDocs, nil
+}
+
+// CodeSnippetRequest 代码片段请求结构
+type CodeSnippetRequest struct {
+	FilePath  string `json:"filePath"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine"`
+}
+
+// CodeSnippetsBatchRequest 批量代码片段请求结构
+type CodeSnippetsBatchRequest struct {
+	ClientId      string               `json:"clientId"`
+	WorkspacePath string               `json:"workspacePath"`
+	CodeSnippets  []CodeSnippetRequest `json:"codeSnippets"`
+}
+
+// CodeSnippetResponse 代码片段响应结构
+type CodeSnippetResponse struct {
+	FilePath  string `json:"filePath"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine"`
+	Content   string `json:"content"`
+}
+
+// CodeSnippetsBatchResponse 批量代码片段响应结构
+type CodeSnippetsBatchResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+	Data    struct {
+		List []CodeSnippetResponse `json:"list"`
+	} `json:"data"`
+}
+
+// fetchCodeContentsBatch 批量获取代码片段Content
+func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, clientId, codebasePath string, snippets []CodeSnippetRequest, authorization string) (map[string]string, error) {
+	if len(snippets) == 0 {
+		return nil, nil
+	}
+
+	// 构建请求体
+	request := CodeSnippetsBatchRequest{
+		ClientId:      clientId,
+		WorkspacePath: codebasePath,
+		CodeSnippets:  snippets,
+	}
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// 构建API请求URL
+	apiURL := "http://localhost:11380/codebase-indexer/api/v1/snippets/read"
+
+	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: %s", apiURL)
+
+	// 创建HTTP请求
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+
+	// 发送HTTP POST请求
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch code contents batch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// 解析响应
+	var batchResponse CodeSnippetsBatchResponse
+	if err := json.Unmarshal(body, &batchResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if !batchResponse.Success {
+		return nil, fmt.Errorf("API request failed: %s", batchResponse.Message)
+	}
+
+	// 构建filePath到content的映射
+	contentMap := make(map[string]string)
+	for _, snippet := range batchResponse.Data.List {
+		key := fmt.Sprintf("%s:%d-%d", snippet.FilePath, snippet.StartLine, snippet.EndLine)
+		contentMap[key] = snippet.Content
+	}
+
+	return contentMap, nil
 }
 
 // fetchCodeContent 通过API获取代码片段的Content
