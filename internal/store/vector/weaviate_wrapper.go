@@ -248,7 +248,7 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 		return nil, fmt.Errorf("query weaviate failed: %w", err)
 	}
 
-	items, err := r.unmarshalSimilarSearchResponse(res, options.CodebasePath, options.ClientId)
+	items, err := r.unmarshalSimilarSearchResponse(res, options.CodebasePath, options.ClientId, options.Authorization)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -256,7 +256,7 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 	return items, nil
 }
 
-func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResponse, codebasePath, clientId string) ([]*types.SemanticFileItem, error) {
+func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResponse, codebasePath, clientId string, authorization string) ([]*types.SemanticFileItem, error) {
 	// Get the data for our class
 	data, ok := res.Data["Get"].(map[string]interface{})
 	if !ok {
@@ -299,7 +299,7 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 
 			// 通过fetchCodeContent接口获取代码片段
 			if codebasePath != "" {
-				fetchedContent, err := fetchCodeContent(context.Background(), r.cfg, clientId, codebasePath, filePath, startLine, endLine)
+				fetchedContent, err := fetchCodeContent(context.Background(), r.cfg, clientId, codebasePath, filePath, startLine, endLine, authorization)
 				if err == nil && fetchedContent != "" {
 					content = fetchedContent
 				}
@@ -694,7 +694,7 @@ func (r *weaviateWrapper) Query(ctx context.Context, query string, topK int, opt
 }
 
 // fetchCodeContent 通过API获取代码片段的Content
-func fetchCodeContent(ctx context.Context, cfg config.VectorStoreConf, clientId, codebasePath, filePath string, startLine, endLine int) (string, error) {
+func fetchCodeContent(ctx context.Context, cfg config.VectorStoreConf, clientId, codebasePath, filePath string, startLine, endLine int, authorization string) (string, error) {
 	// 构建API请求URL
 	baseURL := cfg.BaseURL
 
@@ -730,8 +730,19 @@ func fetchCodeContent(ctx context.Context, cfg config.VectorStoreConf, clientId,
 
 	tracer.WithTrace(ctx).Infof("fetchCodeContent %s: ", requestURL)
 
+	// 创建HTTP请求
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// 添加Authorization头
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+
 	// 发送HTTP GET请求
-	resp, err := http.Get(requestURL)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch code content: %w", err)
 	}

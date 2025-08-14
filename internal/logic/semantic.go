@@ -37,7 +37,7 @@ func NewSemanticSearchLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Se
 	}
 }
 
-func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *types.SemanticSearchResponseData, err error) {
+func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest, authorization string) (resp *types.SemanticSearchResponseData, err error) {
 	topK := req.TopK
 	if topK < minPositive {
 		topK = defaultTopK
@@ -61,8 +61,13 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest) (resp *
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
 
 	documents, err := l.svcCtx.VectorStore.Query(ctx, req.Query, topK,
-		vector.Options{CodebaseId: codebase.ID, ClientId: clientId,
-			CodebasePath: codebase.Path, CodebaseName: codebase.Name})
+		vector.Options{
+			CodebaseId:    codebase.ID,
+			ClientId:      clientId,
+			CodebasePath:  codebase.Path,
+			CodebaseName:  codebase.Name,
+			Authorization: authorization,
+		})
 	if err != nil {
 		return nil, err
 	}

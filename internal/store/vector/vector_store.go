@@ -25,13 +25,14 @@ type Store interface {
 const vectorWeaviate = "weaviate"
 
 type Options struct {
-	CodebaseId   int32
-	SyncId       int32
-	RequestId    string
-	CodebasePath string
-	CodebaseName string
-	TotalFiles   int
-	ClientId     string
+	CodebaseId    int32
+	SyncId        int32
+	RequestId     string
+	CodebasePath  string
+	CodebaseName  string
+	TotalFiles    int
+	ClientId      string
+	Authorization string
 }
 
 func NewVectorStore(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Store, error) {
