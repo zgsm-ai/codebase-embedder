@@ -45,6 +45,7 @@ data:
     
     Redis:
       Addr: redis:6379
+      DefaultExpiration: 1h
     
     VectorStore:
       Type: weaviate

@@ -274,25 +274,19 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 
 	// 如果开启获取源码，则收集所有需要获取的代码片段
 	var snippets []CodeSnippetRequest
-	var snippetInfoList []struct {
-		index     int
-		filePath  string
-		startLine int
-		endLine   int
-	}
 
 	// 第一遍遍历：收集所有需要获取源码的片段信息
-	for i, result := range results {
+	for _, result := range results {
 		obj, ok := result.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		content := getStringValue(obj, Content)
+		// content := getStringValue(obj, Content)
 		filePath := getStringValue(obj, MetadataFilePath)
 
 		// 如果开启获取源码，则从MetadataRange中提取行号信息
-		if r.cfg.FetchSourceCode && content != "" && filePath != "" && codebasePath != "" {
+		if r.cfg.FetchSourceCode && filePath != "" && codebasePath != "" {
 			// 从MetadataRange中提取startLine和endLine
 			var startLine, endLine int
 			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
@@ -304,23 +298,12 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 				}
 			}
 
-			// 添加到批量获取列表
+			// 添加到批量获取列表，拼接成全路径
+			fullPath := filepath.Join(codebasePath, filePath)
 			snippets = append(snippets, CodeSnippetRequest{
-				FilePath:  filePath,
+				FilePath:  fullPath,
 				StartLine: startLine,
 				EndLine:   endLine,
-			})
-
-			snippetInfoList = append(snippetInfoList, struct {
-				index     int
-				filePath  string
-				startLine int
-				endLine   int
-			}{
-				index:     i,
-				filePath:  filePath,
-				startLine: startLine,
-				endLine:   endLine,
 			})
 		}
 	}
@@ -331,8 +314,7 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 		var err error
 		contentMap, err = fetchCodeContentsBatch(context.Background(), r.cfg, clientId, codebasePath, snippets, authorization)
 		if err != nil {
-			fmt.Printf("[DEBUG] 批量获取代码片段失败: %v\n", err)
-			contentMap = make(map[string]string)
+			return nil, fmt.Errorf("批量获取代码片段失败: %w", err)
 		}
 	}
 
@@ -349,11 +331,12 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 			continue
 		}
 
-		content := getStringValue(obj, Content)
+		// content := getStringValue(obj, Content)
+		content := ""
 		filePath := getStringValue(obj, MetadataFilePath)
 
 		// 如果开启获取源码且有批量获取的内容，则使用获取到的内容
-		if r.cfg.FetchSourceCode && content != "" && filePath != "" && codebasePath != "" {
+		if r.cfg.FetchSourceCode && filePath != "" && codebasePath != "" {
 			// 从MetadataRange中提取startLine和endLine（用于构建映射键）
 			var startLine, endLine int
 			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
@@ -366,13 +349,12 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 			}
 
 			// 构建映射键并查找批量获取的内容
-			key := fmt.Sprintf("%s:%d-%d", filePath, startLine, endLine)
+			fullPath := filepath.Join(codebasePath, filePath)
+			key := fmt.Sprintf("%s:%d-%d", fullPath, startLine, endLine)
 			if fetchedContent, exists := contentMap[key]; exists && fetchedContent != "" {
 				content = fetchedContent
 			}
 		}
-
-		fmt.Printf("[DEBUG] %s content: %s\n", filePath, content)
 
 		// Create SemanticFileItem with proper fields
 		item := &types.SemanticFileItem{
@@ -810,9 +792,11 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 	}
 
 	// 构建API请求URL
-	apiURL := "http://localhost:11380/codebase-indexer/api/v1/snippets/read"
+	apiURL := cfg.BaseURL
 
 	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: %s", apiURL)
+
+	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: request %v", request)
 
 	// 创建HTTP请求
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))

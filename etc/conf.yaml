@@ -51,6 +51,7 @@ VectorStore:
   Type: weaviate
   Timeout: 60s
   MaxRetries: 5
+  BaseURL: "http://localhost:11380/codebase-indexer/api/v1/snippets/read"
   Weaviate:
     MaxDocuments: 20
     Endpoint: "localhost:8080"
