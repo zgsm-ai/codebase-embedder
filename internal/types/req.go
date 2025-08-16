@@ -206,3 +206,17 @@ type TaskPoolState struct {
 	RunningTasks int `json:"runningTasks"` // 正在运行的任务数量
 	TaskCapacity int `json:"taskCapacity"` // 任务池容量
 }
+
+// UpdateEmbeddingPathRequest 更新嵌入路径的请求
+type UpdateEmbeddingPathRequest struct {
+	ClientId      string `json:"clientId"`               // 客户端唯一标识
+	CodebasePath  string `json:"codebasePath"`           // 项目绝对路径
+	OldPath       string `json:"oldPath"`                // 旧路径（文件或目录）
+	NewPath       string `json:"newPath"`                // 新路径（文件或目录）
+}
+
+// UpdateEmbeddingPathResponseData 更新嵌入路径的响应
+type UpdateEmbeddingPathResponseData struct {
+	ModifiedFiles []string `json:"modifiedFiles"` // 修改的文件列表
+	TotalFiles    int      `json:"totalFiles"`    // 总共修改的文件数
+}

@@ -61,13 +61,26 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 		},
 		rest.WithPrefix("/codebase-embedder"),
-	)
-	log.Println("[DEBUG] 已注册路由: DELETE /codebase-embedder/api/v1/embeddings")
-	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/summary")
-	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/vectors-summary")
-	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/token")
-	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/upload")
-	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/status")
+		)
+		log.Println("[DEBUG] 已注册路由: DELETE /codebase-embedder/api/v1/embeddings")
+		log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/summary")
+		log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/embeddings/vectors-summary")
+		log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/token")
+		log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/upload")
+		log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/files/status")
+	
+		// 添加更新嵌入路径接口路由
+		server.AddRoutes(
+			[]rest.Route{
+				{
+					Method:  http.MethodPut,
+					Path:    "/api/v1/embeddings",
+					Handler: updateEmbeddingHandler(serverCtx),
+				},
+			},
+			rest.WithPrefix("/codebase-embedder"),
+		)
+		log.Println("[DEBUG] 已注册路由: PUT /codebase-embedder/api/v1/embeddings")
 
 	// 添加代码库查询接口路由
 	server.AddRoutes(
