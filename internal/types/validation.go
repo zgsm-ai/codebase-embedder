@@ -62,8 +62,19 @@ type SyncMetadata struct {
 	CodebasePath  string                   `json:"codebasePath"`
 	CodebaseName  string                   `json:"codebaseName"`
 	ExtraMetadata map[string]MetadataValue `json:"extraMetadata"`
-	FileList      map[string]string        `json:"fileList"` // 文件路径 -> 状态
+	FileList      map[string]string        `json:"fileList"`                // 文件路径 -> 状态（兼容格式一）
+	FileListItems []FileListItem           `json:"fileListItems,omitempty"` // 文件列表项（格式二）
 	Timestamp     int64                    `json:"timestamp"`
+}
+
+// FileListItem 文件列表项（数组格式）
+type FileListItem struct {
+	Path       string `json:"path"`       // 源文件路径
+	TargetPath string `json:"targetPath"` // 目标文件路径（用于rename操作）
+	Hash       string `json:"hash"`       // 文件哈希值
+	Status     string `json:"status"`     // 操作类型：add/modify/delete/rename
+	Operate    string `json:"operate"`    // 操作类型（备用字段）
+	RequestId  string `json:"requestId"`  // 请求ID
 }
 
 // FileStats 文件统计信息

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/zeromicro/go-zero/core/logx"
@@ -47,27 +45,27 @@ func (l *UpdateEmbeddingLogic) UpdateEmbeddingPath(req *types.UpdateEmbeddingPat
 	}
 
 	// 检查是否是目录
-	fullOldPath := filepath.Join(codebasePath, oldPath)
-	info, err := os.Stat(fullOldPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat path %s: %w", fullOldPath, err)
-	}
+	// fullOldPath := filepath.Join(codebasePath, oldPath)
+	// info, err := os.Stat(fullOldPath)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to stat path %s: %w", fullOldPath, err)
+	// }
 
 	var modifiedFiles []string
 
-	if info.IsDir() {
-		// 处理目录情况
-		modifiedFiles, err = l.updateDirectoryPaths(codebase, oldPath, newPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update directory paths: %w", err)
-		}
-	} else {
-		// 处理文件情况
-		modifiedFiles, err = l.updateFilePath(codebase, oldPath, newPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update file path: %w", err)
-		}
+	// if info.IsDir() {
+	// 	// 处理目录情况
+	// 	modifiedFiles, err = l.updateDirectoryPaths(codebase, oldPath, newPath)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to update directory paths: %w", err)
+	// 	}
+	// } else {
+	// 	// 处理文件情况
+	modifiedFiles, err = l.updateFilePath(codebase, oldPath, newPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update file path: %w", err)
 	}
+	// }
 
 	return &types.UpdateEmbeddingPathResponseData{
 		ModifiedFiles: modifiedFiles,

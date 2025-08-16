@@ -16,6 +16,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
+	"github.com/zgsm-ai/codebase-indexer/internal/parser"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -39,9 +40,10 @@ func extractFileOperations(metadata *types.SyncMetadata) map[string]string {
 
 type TaskLogic struct {
 	logx.Logger
-	ctx          context.Context
-	svcCtx       *svc.ServiceContext
-	syncMetadata *types.SyncMetadata
+	ctx           context.Context
+	svcCtx        *svc.ServiceContext
+	syncMetadata  *types.SyncMetadata
+	uploadedFiles map[string][]byte // 存储上传的文件内容
 }
 
 func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
@@ -55,8 +57,10 @@ func NewTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TaskLogic {
 			CodebaseName:  "",
 			ExtraMetadata: make(map[string]types.MetadataValue),
 			FileList:      make(map[string]string),
+			FileListItems: []types.FileListItem{},
 			Timestamp:     0,
 		},
+		uploadedFiles: make(map[string][]byte),
 	}
 }
 
@@ -118,11 +122,16 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	}
 	l.Logger.Infof("处理ZIP文件成功 - RequestId: %s, 文件数量: %d", req.RequestId, fileCount)
 
+	// 存储上传的文件内容，供重命名操作使用
+	l.uploadedFiles = files
+
 	// 遍历任务并分类
 	var addTasks, deleteTasks, modifyTasks []string
-	if l.syncMetadata != nil {
-		for key, value := range l.syncMetadata.FileList {
+	var renameTasks []types.FileListItem
 
+	if l.syncMetadata != nil {
+		// 处理格式一的FileList（map格式）
+		for key, value := range l.syncMetadata.FileList {
 			switch strings.ToLower(value) {
 			case "add":
 				addTasks = append(addTasks, key)
@@ -134,11 +143,27 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 				l.Logger.Errorf("未知的操作类型 %s 对于文件 %s", value, key)
 			}
 		}
+
+		// 处理格式二的FileListItems（数组格式）
+		for _, item := range l.syncMetadata.FileListItems {
+			switch strings.ToLower(item.Status) {
+			case "add":
+				addTasks = append(addTasks, item.Path)
+			case "delete":
+				deleteTasks = append(deleteTasks, item.Path)
+			case "modify":
+				modifyTasks = append(modifyTasks, item.Path)
+			case "rename":
+				renameTasks = append(renameTasks, item)
+			default:
+				l.Logger.Errorf("未知的操作类型 %s 对于文件 %s", item.Status, item.Path)
+			}
+		}
 	}
 
 	// 记录任务分类统计
-	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d",
-		len(addTasks), len(deleteTasks), len(modifyTasks))
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d, 重命名: %d",
+		len(addTasks), len(deleteTasks), len(modifyTasks), len(renameTasks))
 
 	/////////////////////////////////////////////////////////////
 	//初始化任务状态
@@ -149,7 +174,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		fileOperations = extractFileOperations(metadata)
 	}
 
-	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d", len(addTasks), len(deleteTasks), len(modifyTasks))
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d, 重命名: %d", len(addTasks), len(deleteTasks), len(modifyTasks), len(renameTasks))
 
 	// 状态修改为处理中
 	l.svcCtx.StatusManager.UpdateFileStatus(ctx, req.RequestId,
@@ -178,6 +203,16 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 				fileStatusItems = append(fileStatusItems, fileStatusItem)
 			}
 
+			// 重命名任务
+			for _, item := range renameTasks {
+				fileStatusItem := types.FileStatusItem{
+					Path:    item.TargetPath, // 目标路径
+					Status:  "processing",
+					Operate: "rename",
+				}
+				fileStatusItems = append(fileStatusItems, fileStatusItem)
+			}
+
 			status.FileList = fileStatusItems
 			l.Logger.Infof("初始化状态： - RequestId: %s , %v", req.RequestId, status.FileList)
 		})
@@ -197,8 +232,19 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		}
 	}
 
-	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d",
-		len(addTasks), len(deleteTasks), len(modifyTasks))
+	l.Logger.Infof("任务分类统计 - 添加: %d, 删除: %d, 修改: %d, 重命名: %d",
+		len(addTasks), len(deleteTasks), len(modifyTasks), len(renameTasks))
+
+	// 执行重命名任务
+	if len(renameTasks) > 0 {
+		l.Logger.Infof("开始执行 %d 个重命名任务", len(renameTasks))
+		if err := l.executeRenameTasks(ctx, codebase, renameTasks); err != nil {
+			l.Logger.Errorf("执行重命名任务失败: %v", err)
+			// 不返回错误，继续处理其他任务
+		} else {
+			l.Logger.Infof("成功执行 %d 个重命名任务", len(renameTasks))
+		}
+	}
 
 	// 更新代码库信息
 	l.Logger.Infof("开始更新代码库信息 - RequestId: %s, CodebaseId: %d, 文件数量: %d", req.RequestId, codebase.ID, fileCount)
@@ -240,12 +286,6 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 
 // validateUploadToken 验证上传令牌的有效性
 func (l *TaskLogic) validateUploadToken(uploadToken string) error {
-	// TODO: 验证uploadToken的有效性
-	// 当前调试阶段，万能令牌"xxxx"直接通过
-	if uploadToken != "xxxx" {
-		// 这里可以添加真实的token验证逻辑
-		// l.Logger.Warnf("Invalid upload token: %s", uploadToken)
-	}
 	return nil
 }
 
@@ -514,7 +554,36 @@ func (l *TaskLogic) extractFileListFromShenmaSync(content []byte, fileName strin
 						operation = "unknown"
 						l.Logger.Errorf("fileList数组项中未找到status或operate字段: %v", itemMap)
 					}
-					metadata.FileList[path] = operation
+
+					// 创建FileListItem
+					fileListItem := types.FileListItem{
+						Path: path,
+					}
+
+					// 解析可选字段
+					if targetPath, ok := itemMap["targetPath"].(string); ok {
+						fileListItem.TargetPath = targetPath
+					}
+					if hash, ok := itemMap["hash"].(string); ok {
+						fileListItem.Hash = hash
+					}
+					if status, ok := itemMap["status"].(string); ok {
+						fileListItem.Status = status
+					}
+					if operate, ok := itemMap["operate"].(string); ok {
+						fileListItem.Operate = operate
+					}
+					if requestId, ok := itemMap["requestId"].(string); ok {
+						fileListItem.RequestId = requestId
+					}
+
+					// 添加到FileListItems数组
+					metadata.FileListItems = append(metadata.FileListItems, fileListItem)
+
+					// 同时兼容原有的FileList map格式（非rename操作）
+					if operation != "rename" {
+						metadata.FileList[path] = operation
+					}
 				} else {
 					l.Logger.Errorf("fileList数组项中缺少path字段: %v", itemMap)
 				}
@@ -709,4 +778,154 @@ func (l *TaskLogic) deleteFilesFromVectorDB(ctx context.Context, codebase *model
 func (l *TaskLogic) getSyncMetadata() *types.SyncMetadata {
 	// 返回从ZIP文件中提取的元数据
 	return l.syncMetadata
+}
+
+// executeRenameTasks 执行重命名任务
+func (l *TaskLogic) executeRenameTasks(ctx context.Context, codebase *model.Codebase, renameTasks []types.FileListItem) error {
+	for _, task := range renameTasks {
+		l.Logger.Infof("开始执行重命名任务 - 源路径: %s, 目标路径: %s", task.Path, task.TargetPath)
+
+		// 更新向量数据库中的文件路径
+		if err := l.renameFileInVectorDB(ctx, codebase, task.Path, task.TargetPath); err != nil {
+			l.Logger.Errorf("重命名文件失败 - 源路径: %s, 目标路径: %s, 错误: %v",
+				task.Path, task.TargetPath, err)
+			return err
+		}
+
+		// 更新任务状态
+		l.svcCtx.StatusManager.UpdateFileStatus(ctx, l.getTaskRequestId(ctx),
+			func(status *types.FileStatusResponseData) {
+				for i, item := range status.FileList {
+					if item.Path == task.Path && item.Operate == "rename" {
+						status.FileList[i].Status = "completed"
+					}
+				}
+			})
+
+		l.Logger.Infof("重命名任务执行成功 - 源路径: %s, 目标路径: %s", task.Path, task.TargetPath)
+	}
+	return nil
+}
+
+// renameFileInVectorDB 在向量数据库中重命名文件
+func (l *TaskLogic) renameFileInVectorDB(ctx context.Context, codebase *model.Codebase, sourcePath, targetPath string) error {
+	l.Logger.Infof("开始执行向量数据库中的文件重命名 - 源路径: %s, 目标路径: %s", sourcePath, targetPath)
+
+	// 由于向量存储接口没有直接的更新方法，我们需要：
+	// 1. 删除源文件的向量
+	// 2. 重新插入带有新路径的向量（如果文件内容在ZIP中存在）
+
+	// 将文件路径转换为Linux格式（正斜杠）
+	sourceLinuxPath := strings.ReplaceAll(sourcePath, "\\", "/")
+	targetLinuxPath := strings.ReplaceAll(targetPath, "\\", "/")
+
+	// 构建需要删除的 CodeChunk
+	sourceChunk := &types.CodeChunk{
+		CodebaseId:   codebase.ID,
+		CodebasePath: codebase.Path,
+		FilePath:     sourceLinuxPath,
+	}
+
+	// 删除源文件的向量
+	options := vector.Options{
+		CodebasePath: codebase.Path,
+	}
+	err := l.svcCtx.VectorStore.DeleteCodeChunks(ctx, []*types.CodeChunk{sourceChunk}, options)
+	if err != nil {
+		l.Logger.Errorf("删除源文件向量失败 - 路径: %s, 错误: %v", sourceLinuxPath, err)
+		return fmt.Errorf("failed to delete source file vectors: %w", err)
+	}
+
+	l.Logger.Infof("成功删除源文件向量 - 路径: %s", sourceLinuxPath)
+
+	// 检查目标文件是否在上传的文件中存在
+	if files, ok := l.getUploadedFiles(); ok {
+		if targetContent, exists := files[targetLinuxPath]; exists {
+			l.Logger.Infof("目标文件存在于上传的ZIP中，重新创建向量 - 路径: %s", targetLinuxPath)
+
+			// 为目标文件创建新的向量
+			if err := l.createEmbeddingForFile(ctx, codebase, targetLinuxPath, targetContent); err != nil {
+				l.Logger.Errorf("为目标文件创建向量失败 - 路径: %s, 错误: %v", targetLinuxPath, err)
+				return fmt.Errorf("failed to create embedding for target file: %w", err)
+			}
+
+			l.Logger.Infof("成功为目标文件创建向量 - 路径: %s", targetLinuxPath)
+		} else {
+			l.Logger.Infof("目标文件不在上传的ZIP中，仅删除源文件向量 - 路径: %s", targetLinuxPath)
+		}
+	}
+
+	return nil
+}
+
+// getUploadedFiles 获取上传的文件内容
+func (l *TaskLogic) getUploadedFiles() (map[string][]byte, bool) {
+	if len(l.uploadedFiles) > 0 {
+		return l.uploadedFiles, true
+	}
+	return nil, false
+}
+
+// createEmbeddingForFile 为文件创建向量
+func (l *TaskLogic) createEmbeddingForFile(ctx context.Context, codebase *model.Codebase, filePath string, content []byte) error {
+	l.Logger.Infof("开始为文件创建向量 - 路径: %s, 大小: %d bytes", filePath, len(content))
+
+	// 创建源文件对象
+	sourceFile := &types.SourceFile{
+		CodebaseId:   codebase.ID,
+		CodebasePath: codebase.Path,
+		CodebaseName: codebase.Name,
+		Path:         filePath,
+		Content:      content,
+	}
+
+	// 使用代码分割器分割文件
+	chunks, err := l.svcCtx.CodeSplitter.Split(sourceFile)
+	if err != nil {
+		l.Logger.Errorf("分割文件失败 - 路径: %s, 错误: %v", filePath, err)
+		if parser.IsNotSupportedFileError(err) {
+			l.Logger.Infof("文件类型不支持，跳过向量化 - 路径: %s", filePath)
+			return nil
+		}
+		return fmt.Errorf("failed to split file: %w", err)
+	}
+
+	if len(chunks) == 0 {
+		l.Logger.Infof("文件分割后没有产生代码块，跳过向量化 - 路径: %s", filePath)
+		return nil
+	}
+
+	// 为每个代码块设置代码库信息
+	for _, chunk := range chunks {
+		chunk.CodebaseId = codebase.ID
+		chunk.CodebasePath = codebase.Path
+		chunk.CodebaseName = codebase.Name
+	}
+
+	// 创建向量存储选项
+	options := vector.Options{
+		CodebaseId:   codebase.ID,
+		CodebasePath: codebase.Path,
+		CodebaseName: codebase.Name,
+	}
+
+	// 插入向量到数据库
+	err = l.svcCtx.VectorStore.UpsertCodeChunks(ctx, chunks, options)
+	if err != nil {
+		l.Logger.Errorf("插入向量失败 - 路径: %s, 错误: %v", filePath, err)
+		return fmt.Errorf("failed to upsert code chunks: %w", err)
+	}
+
+	l.Logger.Infof("成功为文件创建向量 - 路径: %s, 代码块数量: %d", filePath, len(chunks))
+	return nil
+}
+
+// getTaskRequestId 获取当前任务的请求ID
+func (l *TaskLogic) getTaskRequestId(ctx context.Context) string {
+	if requestId := ctx.Value("requestId"); requestId != nil {
+		if id, ok := requestId.(string); ok {
+			return id
+		}
+	}
+	return ""
 }

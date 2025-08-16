@@ -796,9 +796,8 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 
 	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: %s", apiURL)
 
-	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: request %v", request)
-
 	// 创建HTTP请求
+	tracer.WithTrace(ctx).Infof("fetchCodeContentsBatch: jsonData %s", string(jsonData))
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -806,6 +805,7 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
+
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)
 	}
@@ -819,7 +819,12 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 
 	// 检查响应状态码
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		// 读取错误响应体
+		errorBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected status code: %d, failed to read error response: %w", resp.StatusCode, err)
+		}
+		return nil, fmt.Errorf("unexpected status code: %d, response: %s", resp.StatusCode, string(errorBody))
 	}
 
 	// 读取响应体
