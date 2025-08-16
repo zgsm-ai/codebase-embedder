@@ -17,6 +17,13 @@ type Config struct {
 	VectorStore VectorStoreConf
 	Cleaner     CleanerConf
 	Validation  ValidationConfig
+	TokenLimit  TokenLimitConf
+}
+
+// TokenLimitConf token限流配置
+type TokenLimitConf struct {
+	MaxRunningTasks int  `json:"max_running_tasks" yaml:"max_running_tasks"`
+	Enabled         bool `json:"enabled" yaml:"enabled"`
 }
 
 // Validate 实现 Validator 接口

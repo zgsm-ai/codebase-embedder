@@ -30,3 +30,8 @@ func NewAuthError(msg string) error {
 func NewPermissionError(msg string) error {
 	return &codeMsg{Code: 403, Message: msg}
 }
+
+// NewRateLimitError creates a new rate limit error.
+func NewRateLimitError(msg string) error {
+	return &codeMsg{Code: 429, Message: msg}
+}

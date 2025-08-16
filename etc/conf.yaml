@@ -89,3 +89,7 @@ Validation:
   log_level: "info"
   max_concurrency: 5
   skip_patterns: []
+
+TokenLimit:
+  max_running_tasks: 10
+  enabled: true

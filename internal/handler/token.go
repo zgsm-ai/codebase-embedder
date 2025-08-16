@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/logic"
@@ -33,9 +34,14 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 创建token逻辑
-	tokenLogic := logic.NewTokenLogic(r.Context())
+	tokenLogic := logic.NewTokenLogic(r.Context(), h.svcCtx)
 	tokenResp, err := tokenLogic.GenerateToken(&req)
 	if err != nil {
+		// 检查是否为限流错误
+		if errors.Is(err, types.ErrRateLimitReached) {
+			response.RateLimit(w, err)
+			return
+		}
 		response.Error(w, err)
 		return
 	}

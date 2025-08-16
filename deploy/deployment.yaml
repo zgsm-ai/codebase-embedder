@@ -87,6 +87,9 @@ data:
       log_level: "info"
       max_concurrency: 5
       skip_patterns: []
+    TokenLimit:
+      max_running_tasks: 1  
+      enabled: true    
 ---
 apiVersion: apps/v1
 kind: Deployment
