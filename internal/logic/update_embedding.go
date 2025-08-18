@@ -81,7 +81,7 @@ func (l *UpdateEmbeddingLogic) updateDirectoryPaths(codebase *model.Codebase, ol
 	}
 
 	var modifiedFiles []string
-	var chunksToUpdate []*types.CodeChunk
+	var pathUpdates []*types.CodeChunkPathUpdate
 
 	for _, record := range records {
 		// 检查文件路径是否以旧目录路径开头
@@ -89,53 +89,26 @@ func (l *UpdateEmbeddingLogic) updateDirectoryPaths(codebase *model.Codebase, ol
 			// 构建新的文件路径
 			newFilePath := strings.Replace(record.FilePath, oldDirPath, newDirPath, 1)
 
-			// 创建需要更新的chunk
-			chunk := &types.CodeChunk{
-				CodebaseId:   codebase.ID,
-				CodebasePath: codebase.Path,
-				FilePath:     record.FilePath,
-				Content:      []byte(record.Content),
-				Language:     record.Language,
-				Range:        record.Range,
-				TokenCount:   record.TokenCount,
+			// 创建路径更新请求
+			pathUpdate := &types.CodeChunkPathUpdate{
+				CodebaseId:  codebase.ID,
+				OldFilePath: record.FilePath,
+				NewFilePath: newFilePath,
 			}
 
-			chunksToUpdate = append(chunksToUpdate, chunk)
+			pathUpdates = append(pathUpdates, pathUpdate)
 			modifiedFiles = append(modifiedFiles, newFilePath)
 		}
 	}
 
-	if len(chunksToUpdate) > 0 {
-		// 先删除旧的chunks
-		var chunksToDelete []*types.CodeChunk
-		for _, chunk := range chunksToUpdate {
-			chunksToDelete = append(chunksToDelete, &types.CodeChunk{
-				CodebaseId:   chunk.CodebaseId,
-				CodebasePath: chunk.CodebasePath,
-				FilePath:     chunk.FilePath,
-			})
-		}
-
-		err = l.svcCtx.VectorStore.DeleteCodeChunks(l.ctx, chunksToDelete, vector.Options{
+	if len(pathUpdates) > 0 {
+		// 使用新的直接更新路径的方法，而不是删除再插入
+		err = l.svcCtx.VectorStore.UpdateCodeChunksPaths(l.ctx, pathUpdates, vector.Options{
 			CodebaseId:   codebase.ID,
 			CodebasePath: codebase.Path,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to delete old chunks: %w", err)
-		}
-
-		// 更新文件路径
-		for _, chunk := range chunksToUpdate {
-			chunk.FilePath = strings.Replace(chunk.FilePath, oldDirPath, newDirPath, 1)
-		}
-
-		// 插入新的chunks
-		err = l.svcCtx.VectorStore.InsertCodeChunks(l.ctx, chunksToUpdate, vector.Options{
-			CodebaseId:   codebase.ID,
-			CodebasePath: codebase.Path,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to insert new chunks: %w", err)
+			return nil, fmt.Errorf("failed to update chunk paths: %w", err)
 		}
 	}
 
@@ -149,58 +122,31 @@ func (l *UpdateEmbeddingLogic) updateFilePath(codebase *model.Codebase, oldFileP
 		return nil, fmt.Errorf("failed to get codebase records: %w", err)
 	}
 
-	var chunksToUpdate []*types.CodeChunk
 	var modifiedFiles []string
 
+	// 检查是否有需要更新的记录
 	for _, record := range records {
 		if record.FilePath == oldFilePath {
-			// 创建需要更新的chunk
-			chunk := &types.CodeChunk{
-				CodebaseId:   codebase.ID,
-				CodebasePath: codebase.Path,
-				FilePath:     record.FilePath,
-				Content:      []byte(record.Content),
-				Language:     record.Language,
-				Range:        record.Range,
-				TokenCount:   record.TokenCount,
-			}
-
-			chunksToUpdate = append(chunksToUpdate, chunk)
 			modifiedFiles = append(modifiedFiles, newFilePath)
 		}
 	}
 
-	if len(chunksToUpdate) > 0 {
-		// 先删除旧的chunks
-		var chunksToDelete []*types.CodeChunk
-		for _, chunk := range chunksToUpdate {
-			chunksToDelete = append(chunksToDelete, &types.CodeChunk{
-				CodebaseId:   chunk.CodebaseId,
-				CodebasePath: chunk.CodebasePath,
-				FilePath:     chunk.FilePath,
-			})
+	if len(modifiedFiles) > 0 {
+		// 使用直接更新路径的方法
+		pathUpdates := []*types.CodeChunkPathUpdate{
+			{
+				CodebaseId:  codebase.ID,
+				OldFilePath: oldFilePath,
+				NewFilePath: newFilePath,
+			},
 		}
 
-		err = l.svcCtx.VectorStore.DeleteCodeChunks(l.ctx, chunksToDelete, vector.Options{
+		err = l.svcCtx.VectorStore.UpdateCodeChunksPaths(l.ctx, pathUpdates, vector.Options{
 			CodebaseId:   codebase.ID,
 			CodebasePath: codebase.Path,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to delete old chunks: %w", err)
-		}
-
-		// 更新文件路径
-		for _, chunk := range chunksToUpdate {
-			chunk.FilePath = newFilePath
-		}
-
-		// 插入新的chunks
-		err = l.svcCtx.VectorStore.InsertCodeChunks(l.ctx, chunksToUpdate, vector.Options{
-			CodebaseId:   codebase.ID,
-			CodebasePath: codebase.Path,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to insert new chunks: %w", err)
+			return nil, fmt.Errorf("failed to update chunk paths: %w", err)
 		}
 	}
 

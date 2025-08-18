@@ -658,6 +658,327 @@ func (r *weaviateWrapper) UpsertCodeChunks(ctx context.Context, docs []*types.Co
 	return r.InsertCodeChunks(ctx, docs, options)
 }
 
+// UpdateCodeChunksPaths 直接更新代码块的文件路径，而不是删除再插入
+func (r *weaviateWrapper) UpdateCodeChunksPaths(ctx context.Context, updates []*types.CodeChunkPathUpdate, options Options) error {
+
+	if len(updates) == 0 {
+		tracer.WithTrace(ctx).Errorf("UpdateCodeChunksPaths len(updates): %v", len(updates))
+		return nil
+	}
+
+	tenantName, err := r.generateTenantName(options.CodebasePath)
+	if err != nil {
+		return err
+	}
+
+	// 对于每个更新，使用GraphQL更新操作
+	for _, update := range updates {
+		if update.OldFilePath == types.EmptyString || update.NewFilePath == types.EmptyString || update.CodebaseId == 0 {
+			return fmt.Errorf("invalid chunk path update: required fields: CodebaseId, OldFilePath, NewFilePath")
+		}
+
+		// 首先获取要更新的对象ID和完整数据
+		records, err := r.getRecordsByPath(ctx, update.CodebaseId, update.OldFilePath, tenantName)
+		if err != nil {
+			return fmt.Errorf("failed to get records for path %s: %w", update.OldFilePath, err)
+		}
+
+		tracer.WithTrace(ctx).Errorf(" 更新找到记录数: %v", len(records))
+
+		if len(records) == 0 {
+			// 没有找到要更新的对象，跳过
+			continue
+		}
+
+		// 对每个记录执行更新操作
+		for _, record := range records {
+			tracer.WithTrace(ctx).Errorf("%s  ->  %s  updateObjectPath: %v", update.OldFilePath, update.NewFilePath, record.Id)
+
+			err := r.updateObjectPath(ctx, record.Id, update.NewFilePath, tenantName, record)
+			if err != nil {
+				return fmt.Errorf("failed to update object %s path from %s to %s: %w", record.Id, update.OldFilePath, update.NewFilePath, err)
+			}
+		}
+	}
+
+	tracer.WithTrace(ctx).Infof("updated %d chunk paths for codebase %s successfully", len(updates), options.CodebasePath)
+	return nil
+}
+
+// getRecordsByPath 根据文件路径获取完整的记录
+func (r *weaviateWrapper) getRecordsByPath(ctx context.Context, codebaseId int32, filePath string, tenantName string) ([]*types.CodebaseRecord, error) {
+	// 定义GraphQL字段
+	fields := []graphql.Field{
+		{Name: "_additional", Fields: []graphql.Field{
+			{Name: "id"},
+			{Name: "lastUpdateTimeUnix"},
+		}},
+		{Name: MetadataFilePath},
+		{Name: MetadataLanguage},
+		{Name: Content},
+		{Name: MetadataRange},
+		{Name: MetadataTokenCount},
+		{Name: MetadataCodebaseId},
+		{Name: MetadataCodebasePath},
+		{Name: MetadataCodebaseName},
+		{Name: MetadataSyncId},
+	}
+
+	// 构建过滤器
+	filter := filters.Where().
+		WithOperator(filters.And).
+		WithOperands([]*filters.WhereBuilder{
+			filters.Where().
+				WithPath([]string{MetadataCodebaseId}).
+				WithOperator(filters.Equal).
+				WithValueInt(int64(codebaseId)),
+			filters.Where().
+				WithPath([]string{MetadataFilePath}).
+				WithOperator(filters.Equal).
+				WithValueText(filePath),
+		})
+
+	// 执行查询
+	res, err := r.client.GraphQL().Get().
+		WithClassName(r.className).
+		WithFields(fields...).
+		WithWhere(filter).
+		WithTenant(tenantName).
+		Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query objects by path: %w", err)
+	}
+
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	// 解析响应获取记录
+	return r.unmarshalRecordsResponse(res)
+}
+
+// unmarshalRecordsResponse 从GraphQL响应中解析CodebaseRecord列表
+func (r *weaviateWrapper) unmarshalRecordsResponse(res *models.GraphQLResponse) ([]*types.CodebaseRecord, error) {
+	if len(res.Errors) > 0 {
+		var errMsg string
+		for _, e := range res.Errors {
+			errMsg += e.Message
+		}
+		return nil, fmt.Errorf("failed to get records: %s", errMsg)
+	}
+
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	data, ok := res.Data["Get"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: 'Get' field not found or has wrong type")
+	}
+
+	results, ok := data[r.className].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: class data not found or has wrong type")
+	}
+
+	var records []*types.CodebaseRecord
+	for _, result := range results {
+		obj, ok := result.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		additional, ok := obj["_additional"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		id, ok := additional["id"].(string)
+		if !ok {
+			continue
+		}
+
+		lastUpdateTimeUnix, ok := additional["lastUpdateTimeUnix"].(float64)
+		if !ok {
+			lastUpdateTimeUnix = 0
+		}
+
+		filePath, ok := obj[MetadataFilePath].(string)
+		if !ok {
+			continue
+		}
+
+		language, ok := obj[MetadataLanguage].(string)
+		if !ok {
+			language = ""
+		}
+
+		content, ok := obj[Content].(string)
+		if !ok {
+			content = ""
+		}
+
+		rangeData, ok := obj[MetadataRange].([]interface{})
+		var rangeInt []int
+		if ok {
+			for _, r := range rangeData {
+				if val, ok := r.(float64); ok {
+					rangeInt = append(rangeInt, int(val))
+				}
+			}
+		}
+
+		tokenCount, ok := obj[MetadataTokenCount].(float64)
+		if !ok {
+			tokenCount = 0
+		}
+
+		// 解析新增的字段
+		codebaseId, _ := obj[MetadataCodebaseId].(float64)
+		codebasePath, _ := obj[MetadataCodebasePath].(string)
+		codebaseName, _ := obj[MetadataCodebaseName].(string)
+		syncId, _ := obj[MetadataSyncId].(float64)
+
+		record := &types.CodebaseRecord{
+			Id:          id,
+			FilePath:    filePath,
+			Language:    language,
+			Content:     content,
+			Range:       rangeInt,
+			TokenCount:  int(tokenCount),
+			LastUpdated: time.Unix(int64(lastUpdateTimeUnix), 0),
+			// 新增字段
+			CodebaseId:   int32(codebaseId),
+			CodebasePath: codebasePath,
+			CodebaseName: codebaseName,
+			SyncId:       int32(syncId),
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+// getObjectIdsByPath 根据文件路径获取对象ID
+func (r *weaviateWrapper) getObjectIdsByPath(ctx context.Context, codebaseId int32, filePath string, tenantName string) ([]string, error) {
+	// 定义GraphQL字段
+	fields := []graphql.Field{
+		{Name: "_additional", Fields: []graphql.Field{
+			{Name: "id"},
+		}},
+	}
+
+	// 构建过滤器
+	filter := filters.Where().
+		WithOperator(filters.And).
+		WithOperands([]*filters.WhereBuilder{
+			filters.Where().
+				WithPath([]string{MetadataCodebaseId}).
+				WithOperator(filters.Equal).
+				WithValueInt(int64(codebaseId)),
+			filters.Where().
+				WithPath([]string{MetadataFilePath}).
+				WithOperator(filters.Equal).
+				WithValueText(filePath),
+		})
+
+	// 执行查询
+	res, err := r.client.GraphQL().Get().
+		WithClassName(r.className).
+		WithFields(fields...).
+		WithWhere(filter).
+		WithTenant(tenantName).
+		Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query objects by path: %w", err)
+	}
+
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	// 解析响应获取ID
+	return r.unmarshalIdsResponse(res)
+}
+
+// unmarshalIdsResponse 从GraphQL响应中解析ID列表
+func (r *weaviateWrapper) unmarshalIdsResponse(res *models.GraphQLResponse) ([]string, error) {
+	if len(res.Errors) > 0 {
+		var errMsg string
+		for _, e := range res.Errors {
+			errMsg += e.Message
+		}
+		return nil, fmt.Errorf("failed to get object ids: %s", errMsg)
+	}
+
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	data, ok := res.Data["Get"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: 'Get' field not found or has wrong type")
+	}
+
+	results, ok := data[r.className].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: class data not found or has wrong type")
+	}
+
+	var ids []string
+	for _, result := range results {
+		obj, ok := result.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		additional, ok := obj["_additional"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if id, ok := additional["id"].(string); ok {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids, nil
+}
+
+// updateObjectPath 更新单个对象的路径
+func (r *weaviateWrapper) updateObjectPath(ctx context.Context, id string, newFilePath string, tenantName string, record *types.CodebaseRecord) error {
+	// 使用Weaviate的REST API直接更新对象
+	// 构建更新请求体，包含所有原有属性
+	updateData := map[string]interface{}{
+		MetadataFilePath:     newFilePath,
+		MetadataLanguage:     record.Language,
+		Content:              record.Content,
+		MetadataRange:        record.Range,
+		MetadataTokenCount:   record.TokenCount,
+		MetadataCodebaseId:   record.CodebaseId,
+		MetadataCodebasePath: record.CodebasePath,
+		MetadataCodebaseName: record.CodebaseName,
+		MetadataSyncId:       record.SyncId,
+	}
+
+	// 执行更新
+	err := r.client.Data().Updater().
+		WithID(id).
+		WithClassName(r.className).
+		WithTenant(tenantName).
+		WithProperties(updateData).
+		Do(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to update object path: %w", err)
+	}
+
+	return nil
+}
+
 func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.CodeChunk, options Options) error {
 	if len(docs) == 0 {
 		return nil

@@ -11,14 +11,14 @@ type CodebaseQueryRequest struct {
 
 // CodebaseQueryResponse 查询代码库响应
 type CodebaseQueryResponse struct {
-	CodebaseId   int32                `json:"codebaseId"`
-	CodebaseName string               `json:"codebaseName"`
-	CodebasePath string               `json:"codebasePath"`
-	Summary      *CodebaseSummary     `json:"summary"`
+	CodebaseId   int32                  `json:"codebaseId"`
+	CodebaseName string                 `json:"codebaseName"`
+	CodebasePath string                 `json:"codebasePath"`
+	Summary      *CodebaseSummary       `json:"summary"`
 	LanguageDist []LanguageDistribution `json:"languageDistribution"`
-	RecentFiles  []RecentFileInfo     `json:"recentFiles"`
-	IndexStats   *IndexStatistics     `json:"indexStats"`
-	Records      []CodebaseRecord     `json:"records"` // 新增：详细记录列表
+	RecentFiles  []RecentFileInfo       `json:"recentFiles"`
+	IndexStats   *IndexStatistics       `json:"indexStats"`
+	Records      []CodebaseRecord       `json:"records"` // 新增：详细记录列表
 }
 
 // CodebaseRecord 代码库详细记录
@@ -30,15 +30,19 @@ type CodebaseRecord struct {
 	Range        []int     `json:"range"` // [startLine, startColumn, endLine, endColumn]
 	TokenCount   int       `json:"tokenCount"`
 	LastUpdated  time.Time `json:"lastUpdated"`
+	CodebaseId   int32     `json:"codebaseId"`
+	CodebasePath string    `json:"codebasePath"`
+	CodebaseName string    `json:"codebaseName"`
+	SyncId       int32     `json:"syncId"`
 }
 
 // CodebaseSummary 代码库摘要信息
 type CodebaseSummary struct {
-	TotalFiles      int32     `json:"totalFiles"`
-	TotalChunks     int32     `json:"totalChunks"`
-	LastUpdateTime  time.Time `json:"lastUpdateTime"`
-	IndexStatus     string    `json:"indexStatus"`
-	IndexProgress   int32     `json:"indexProgress"`
+	TotalFiles     int32     `json:"totalFiles"`
+	TotalChunks    int32     `json:"totalChunks"`
+	LastUpdateTime time.Time `json:"lastUpdateTime"`
+	IndexStatus    string    `json:"indexStatus"`
+	IndexProgress  int32     `json:"indexProgress"`
 }
 
 // LanguageDistribution 语言分布信息

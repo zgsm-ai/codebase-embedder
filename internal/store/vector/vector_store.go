@@ -18,6 +18,7 @@ type Store interface {
 	InsertCodeChunks(ctx context.Context, docs []*types.CodeChunk, options Options) error
 	UpsertCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
 	DeleteCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
+	UpdateCodeChunksPaths(ctx context.Context, updates []*types.CodeChunkPathUpdate, options Options) error
 	Query(ctx context.Context, query string, topK int, options Options) ([]*types.SemanticFileItem, error)
 	Close()
 }
