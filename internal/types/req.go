@@ -220,3 +220,19 @@ type UpdateEmbeddingPathResponseData struct {
 	ModifiedFiles []string `json:"modifiedFiles"` // 修改的文件列表
 	TotalFiles    int      `json:"totalFiles"`    // 总共修改的文件数
 }
+
+// FileRecordsRequest 获取文件记录的请求
+type FileRecordsRequest struct {
+	ClientId     string `form:"clientId"`     // 客户端唯一标识
+	CodebasePath string `form:"codebasePath"` // 项目绝对路径
+	FilePath     string `form:"filePath"`     // 文件相对路径
+}
+
+// FileRecordsResponse 获取文件记录的响应
+type FileRecordsResponse struct {
+	ClientId   string            `json:"clientId"`   // 代码库ID
+	CodebasePath string           `json:"codebasePath"` // 项目绝对路径
+	FilePath     string           `json:"filePath"`     // 文件相对路径
+	Records      []CodebaseRecord `json:"records"`      // 文件记录列表
+	TotalCount   int              `json:"totalCount"`   // 记录总数
+}

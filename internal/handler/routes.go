@@ -108,6 +108,19 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 	)
 	log.Println("[DEBUG] 已注册路由: POST /codebase-embedder/api/v1/codebase/tree")
 
+	// 添加文件记录查询接口路由
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/api/v1/files/records",
+				Handler: FileRecordsHandler(serverCtx),
+			},
+		},
+		rest.WithPrefix("/codebase-embedder"),
+	)
+	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/files/records")
+
 	// 添加运行中任务查询接口路由
 	server.AddRoutes(
 		[]rest.Route{

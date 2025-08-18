@@ -678,7 +678,7 @@ func (r *weaviateWrapper) UpdateCodeChunksPaths(ctx context.Context, updates []*
 		}
 
 		// 首先获取要更新的对象ID和完整数据
-		records, err := r.getRecordsByPath(ctx, update.CodebaseId, update.OldFilePath, tenantName)
+		records, err := r.getRecordsByPath(ctx, update.OldFilePath, tenantName)
 		if err != nil {
 			return fmt.Errorf("failed to get records for path %s: %w", update.OldFilePath, err)
 		}
@@ -706,7 +706,7 @@ func (r *weaviateWrapper) UpdateCodeChunksPaths(ctx context.Context, updates []*
 }
 
 // getRecordsByPath 根据文件路径获取完整的记录
-func (r *weaviateWrapper) getRecordsByPath(ctx context.Context, codebaseId int32, filePath string, tenantName string) ([]*types.CodebaseRecord, error) {
+func (r *weaviateWrapper) getRecordsByPath(ctx context.Context, filePath string, tenantName string) ([]*types.CodebaseRecord, error) {
 	// 定义GraphQL字段
 	fields := []graphql.Field{
 		{Name: "_additional", Fields: []graphql.Field{
@@ -728,10 +728,6 @@ func (r *weaviateWrapper) getRecordsByPath(ctx context.Context, codebaseId int32
 	filter := filters.Where().
 		WithOperator(filters.And).
 		WithOperands([]*filters.WhereBuilder{
-			filters.Where().
-				WithPath([]string{MetadataCodebaseId}).
-				WithOperator(filters.Equal).
-				WithValueInt(int64(codebaseId)),
 			filters.Where().
 				WithPath([]string{MetadataFilePath}).
 				WithOperator(filters.Equal).
@@ -1347,4 +1343,16 @@ func (r *weaviateWrapper) unmarshalSummarySearchResponse(res *models.GraphQLResp
 		TotalFiles:  totalFiles,
 		TotalChunks: totalChunks,
 	}, nil
+}
+
+// GetFileRecords 根据文件路径获取代码记录
+func (r *weaviateWrapper) GetFileRecords(ctx context.Context, codebasePath string, filePath string) ([]*types.CodebaseRecord, error) {
+	// 生成租户名称
+	tenantName, err := r.generateTenantName(codebasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// 调用内部方法获取记录
+	return r.getRecordsByPath(ctx, filePath, tenantName)
 }

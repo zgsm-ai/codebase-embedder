@@ -19,7 +19,7 @@ type CodebaseQueryStore struct {
 // NewCodebaseQueryStore 创建新的向量查询存储
 func NewCodebaseQueryStore(store Store, logger logx.Logger) *CodebaseQueryStore {
 	return &CodebaseQueryStore{
-		store: store,
+		store:  store,
 		Logger: logger,
 	}
 }
@@ -99,6 +99,24 @@ func (s *CodebaseQueryStore) QueryCodebaseRecords(ctx context.Context, codebaseI
 		s.Errorf("查询代码库详细记录失败, codebaseId: %d, codebasePath: %s, error: %v",
 			codebaseId, codebasePath, err)
 		return nil, fmt.Errorf("查询代码库详细记录失败: %w", err)
+	}
+
+	// 转换类型
+	result := make([]types.CodebaseRecord, len(records))
+	for i, record := range records {
+		result[i] = *record
+	}
+
+	return result, nil
+}
+
+// QueryFileRecords 查询指定文件的详细记录
+func (s *CodebaseQueryStore) QueryFileRecords(ctx context.Context, codebasePath string, filePath string) ([]types.CodebaseRecord, error) {
+	records, err := s.store.GetFileRecords(ctx, codebasePath, filePath)
+	if err != nil {
+		s.Errorf("查询文件详细记录失败, codebasePath: %s, filePath: %s, error: %v",
+			codebasePath, filePath, err)
+		return nil, fmt.Errorf("查询文件详细记录失败: %w", err)
 	}
 
 	// 转换类型
