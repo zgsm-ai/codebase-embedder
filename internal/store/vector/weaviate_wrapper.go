@@ -1356,3 +1356,69 @@ func (r *weaviateWrapper) GetFileRecords(ctx context.Context, codebasePath strin
 	// 调用内部方法获取记录
 	return r.getRecordsByPath(ctx, filePath, tenantName)
 }
+
+// GetDictionaryRecords 获取指定目录的记录，通过匹配filePath的前缀
+func (r *weaviateWrapper) GetDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error) {
+	// 生成租户名称
+	tenantName, err := r.generateTenantName(codebasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// 调用内部方法获取目录记录
+	return r.getRecordsByPathPrefix(ctx, dictionary, tenantName)
+}
+
+// getRecordsByPathPrefix 根据路径前缀获取记录
+func (r *weaviateWrapper) getRecordsByPathPrefix(ctx context.Context, pathPrefix string, tenantName string) ([]*types.CodebaseRecord, error) {
+	// 确保路径前缀以/结尾，以便正确匹配子目录和文件
+	if pathPrefix != "" && !strings.HasSuffix(pathPrefix, "/") {
+		pathPrefix += "/"
+	}
+
+	// 定义GraphQL字段
+	fields := []graphql.Field{
+		{Name: "_additional", Fields: []graphql.Field{
+			{Name: "id"},
+			{Name: "lastUpdateTimeUnix"},
+		}},
+		{Name: MetadataFilePath},
+		{Name: MetadataLanguage},
+		{Name: Content},
+		{Name: MetadataRange},
+		{Name: MetadataTokenCount},
+		{Name: MetadataCodebaseId},
+		{Name: MetadataCodebasePath},
+		{Name: MetadataCodebaseName},
+		{Name: MetadataSyncId},
+	}
+
+	// 构建过滤器：使用Like操作符匹配filePath前缀
+	filter := filters.Where().
+		WithOperator(filters.And).
+		WithOperands([]*filters.WhereBuilder{
+			filters.Where().
+				WithPath([]string{MetadataFilePath}).
+				WithOperator(filters.Like).
+				WithValueText(pathPrefix + "%"),
+		})
+
+	// 执行查询
+	res, err := r.client.GraphQL().Get().
+		WithClassName(r.className).
+		WithFields(fields...).
+		WithWhere(filter).
+		WithTenant(tenantName).
+		Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query objects by path prefix: %w", err)
+	}
+
+	if res == nil || res.Data == nil {
+		return nil, nil
+	}
+
+	// 解析响应获取记录
+	return r.unmarshalRecordsResponse(res)
+}

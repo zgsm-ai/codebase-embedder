@@ -236,3 +236,19 @@ type FileRecordsResponse struct {
 	Records      []CodebaseRecord `json:"records"`      // 文件记录列表
 	TotalCount   int              `json:"totalCount"`   // 记录总数
 }
+
+// DictionaryRecordsRequest 获取目录记录的请求
+type DictionaryRecordsRequest struct {
+	ClientId     string `form:"clientId"`     // 客户端唯一标识
+	CodebasePath string `form:"codebasePath"` // 项目绝对路径
+	Dictionary   string `form:"dictionary"`   // 目录相对路径
+}
+
+// DictionaryRecordsResponse 获取目录记录的响应
+type DictionaryRecordsResponse struct {
+	ClientId     string            `json:"clientId"`     // 客户端ID
+	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
+	Dictionary   string            `json:"dictionary"`   // 目录相对路径
+	Records      []CodebaseRecord  `json:"records"`      // 目录记录列表
+	TotalCount   int               `json:"totalCount"`   // 记录总数
+}

@@ -16,6 +16,7 @@ type Store interface {
 	GetIndexSummary(ctx context.Context, codebaseId int32, codebasePath string) (*types.EmbeddingSummary, error)
 	GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error)
 	GetFileRecords(ctx context.Context, codebasePath string, filePath string) ([]*types.CodebaseRecord, error)
+	GetDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error)
 	InsertCodeChunks(ctx context.Context, docs []*types.CodeChunk, options Options) error
 	UpsertCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
 	DeleteCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error

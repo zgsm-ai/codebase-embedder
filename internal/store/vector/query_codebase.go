@@ -110,6 +110,24 @@ func (s *CodebaseQueryStore) QueryCodebaseRecords(ctx context.Context, codebaseI
 	return result, nil
 }
 
+// QueryDictionaryRecords 查询指定目录的详细记录，通过匹配filePath的前缀
+func (s *CodebaseQueryStore) QueryDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]types.CodebaseRecord, error) {
+	records, err := s.store.GetDictionaryRecords(ctx, codebasePath, dictionary)
+	if err != nil {
+		s.Errorf("查询目录详细记录失败, codebasePath: %s, dictionary: %s, error: %v",
+			codebasePath, dictionary, err)
+		return nil, fmt.Errorf("查询目录详细记录失败: %w", err)
+	}
+
+	// 转换类型
+	result := make([]types.CodebaseRecord, len(records))
+	for i, record := range records {
+		result[i] = *record
+	}
+
+	return result, nil
+}
+
 // QueryFileRecords 查询指定文件的详细记录
 func (s *CodebaseQueryStore) QueryFileRecords(ctx context.Context, codebasePath string, filePath string) ([]types.CodebaseRecord, error) {
 	records, err := s.store.GetFileRecords(ctx, codebasePath, filePath)

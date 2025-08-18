@@ -157,5 +157,18 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		rest.WithPrefix("/codebase-embedder"),
 	)
 	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/tasks/failed")
+
+	// 添加目录记录查询接口路由
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/api/v1/dictionary/records",
+				Handler: DictionaryRecordsHandler(serverCtx),
+			},
+		},
+		rest.WithPrefix("/codebase-embedder"),
+	)
+	log.Println("[DEBUG] 已注册路由: GET /codebase-embedder/api/v1/dictionary/records")
 	log.Println("[DEBUG] 路由注册完成")
 }
