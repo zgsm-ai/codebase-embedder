@@ -19,7 +19,6 @@ type ServiceContext struct {
 	Config        config.Config
 	db            *gorm.DB
 	Querier       *query.Query
-	DistLock      redisstore.DistributedLock
 	Embedder      vector.Embedder
 	VectorStore   vector.Store
 	CodeSplitter  *embedding.CodeSplitter
@@ -76,11 +75,6 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 	}
 	svcCtx.redisClient = client
 
-	lock, err := redisstore.NewRedisDistributedLock(client)
-	if err != nil {
-		return nil, err
-	}
-
 	embedder, err := vector.NewEmbedder(c.VectorStore.Embedder)
 	if err != nil {
 		return nil, err
@@ -108,7 +102,6 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 
 	svcCtx.Embedder = embedder
 	svcCtx.CodeSplitter = splitter
-	svcCtx.DistLock = lock
 	// 状态管理器 - 使用配置中的默认过期时间
 	svcCtx.StatusManager = redisstore.NewStatusManagerWithExpiration(client, c.Redis.DefaultExpiration)
 

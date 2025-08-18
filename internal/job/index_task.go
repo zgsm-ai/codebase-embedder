@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
 type IndexTask struct {
-	SvcCtx  *svc.ServiceContext
-	LockMux *redsync.Mutex
-	Params  *IndexTaskParams
+	SvcCtx *svc.ServiceContext
+	Params *IndexTaskParams
 }
 
 type IndexTaskParams struct {
@@ -33,12 +31,6 @@ func (i *IndexTask) Run(ctx context.Context) (embedTaskOk bool) {
 	start := time.Now()
 	tracer.WithTrace(ctx).Infof("index task started")
 
-	// 解锁
-	defer func() {
-		if err := i.SvcCtx.DistLock.Unlock(ctx, i.LockMux); err != nil {
-			tracer.WithTrace(ctx).Errorf("index task unlock failed, key %s, err:%v", i.LockMux.Name(), err)
-		}
-	}()
 	// 启动嵌入任务
 	embedErr := i.buildEmbedding(ctx)
 	if embedErr != nil {

@@ -13,10 +13,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-redsync/redsync/v4"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/job"
-	"github.com/zgsm-ai/codebase-indexer/internal/parser"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -101,17 +99,6 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	l.Logger.Infof("初始化代码库成功 - RequestId: %s, CodebaseId: %d", req.RequestId, codebase.ID)
 
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
-
-	// 获取分布式锁
-	// mux, err := l.acquireTaskLock(ctx, codebase.ID)
-	l.Logger.Infof("开始获取分布式锁 - RequestId: %s", req.RequestId)
-	mux, err := l.acquireTaskLock(ctx, req.RequestId)
-	if err != nil {
-		l.Logger.Errorf("获取分布式锁失败 - RequestId: %s, 错误: %v", req.RequestId, err)
-		return nil, err
-	}
-	l.Logger.Infof("获取分布式锁成功 - RequestId: %s", req.RequestId)
-	defer l.svcCtx.DistLock.Unlock(ctx, mux)
 
 	// 处理上传的ZIP文件
 	l.Logger.Infof("开始处理上传的ZIP文件 - RequestId: %s", req.RequestId)
@@ -274,7 +261,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		l.Logger.Infof("初始化文件处理状态为完成成功 - RequestId: %s", req.RequestId)
 	} else {
 		// 文件数量大于0，正常提交索引任务
-		if err := l.submitIndexTask(ctx, codebase, clientId, req.RequestId, mux, files, metadata); err != nil {
+		if err := l.submitIndexTask(ctx, codebase, clientId, req.RequestId, files, metadata); err != nil {
 			l.Logger.Errorf("提交索引任务失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 			return nil, err
 		}
@@ -287,19 +274,6 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 // validateUploadToken 验证上传令牌的有效性
 func (l *TaskLogic) validateUploadToken(uploadToken string) error {
 	return nil
-}
-
-// acquireTaskLock 获取任务锁
-func (l *TaskLogic) acquireTaskLock(ctx context.Context, codebaseID string) (*redsync.Mutex, error) {
-	lockKey := fmt.Sprintf("codebase_embedder:task:%s", codebaseID)
-
-	mux, locked, err := l.svcCtx.DistLock.TryLock(ctx, lockKey, l.svcCtx.Config.IndexTask.LockTimeout)
-	if err != nil || !locked {
-		return nil, fmt.Errorf("failed to acquire lock %s to sumit index task, err:%w", lockKey, err)
-	}
-
-	tracer.WithTrace(ctx).Infof("acquire lock %s successfully, start to submit index task.", lockKey)
-	return mux, nil
 }
 
 // processUploadedZipFile 处理上传的ZIP文件
@@ -641,13 +615,12 @@ func (l *TaskLogic) updateCodebaseInfo(codebase *model.Codebase, fileCount int, 
 }
 
 // submitIndexTask 提交索引任务
-func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, mux *redsync.Mutex, files map[string][]byte, metadata *types.SyncMetadata) error {
+func (l *TaskLogic) submitIndexTask(ctx context.Context, codebase *model.Codebase, clientId, requestId string, files map[string][]byte, metadata *types.SyncMetadata) error {
 	startTime := time.Now()
 	l.Logger.Infof("开始创建索引任务 - RequestId: %s, CodebaseId: %d, 文件数量: %d", requestId, codebase.ID, len(files))
 
 	task := &job.IndexTask{
-		SvcCtx:  l.svcCtx,
-		LockMux: mux,
+		SvcCtx: l.svcCtx,
 		Params: &job.IndexTaskParams{
 			ClientId:     clientId,
 			CodebaseID:   codebase.ID,
@@ -811,112 +784,12 @@ func (l *TaskLogic) executeRenameTasks(ctx context.Context, codebase *model.Code
 func (l *TaskLogic) renameFileInVectorDB(ctx context.Context, codebase *model.Codebase, sourcePath, targetPath string) error {
 	l.Logger.Infof("开始执行向量数据库中的文件重命名 - 源路径: %s, 目标路径: %s", sourcePath, targetPath)
 
-	// 由于向量存储接口没有直接的更新方法，我们需要：
-	// 1. 删除源文件的向量
-	// 2. 重新插入带有新路径的向量（如果文件内容在ZIP中存在）
-
 	// 将文件路径转换为Linux格式（正斜杠）
 	sourceLinuxPath := strings.ReplaceAll(sourcePath, "\\", "/")
 	targetLinuxPath := strings.ReplaceAll(targetPath, "\\", "/")
 
-	// 构建需要删除的 CodeChunk
-	sourceChunk := &types.CodeChunk{
-		CodebaseId:   codebase.ID,
-		CodebasePath: codebase.Path,
-		FilePath:     sourceLinuxPath,
-	}
+	l.svcCtx.VectorStore.UpdateCodeChunksDictionary(ctx, codebase.Path, sourceLinuxPath, targetLinuxPath)
 
-	// 删除源文件的向量
-	options := vector.Options{
-		CodebasePath: codebase.Path,
-	}
-	err := l.svcCtx.VectorStore.DeleteCodeChunks(ctx, []*types.CodeChunk{sourceChunk}, options)
-	if err != nil {
-		l.Logger.Errorf("删除源文件向量失败 - 路径: %s, 错误: %v", sourceLinuxPath, err)
-		return fmt.Errorf("failed to delete source file vectors: %w", err)
-	}
-
-	l.Logger.Infof("成功删除源文件向量 - 路径: %s", sourceLinuxPath)
-
-	// 检查目标文件是否在上传的文件中存在
-	if files, ok := l.getUploadedFiles(); ok {
-		if targetContent, exists := files[targetLinuxPath]; exists {
-			l.Logger.Infof("目标文件存在于上传的ZIP中，重新创建向量 - 路径: %s", targetLinuxPath)
-
-			// 为目标文件创建新的向量
-			if err := l.createEmbeddingForFile(ctx, codebase, targetLinuxPath, targetContent); err != nil {
-				l.Logger.Errorf("为目标文件创建向量失败 - 路径: %s, 错误: %v", targetLinuxPath, err)
-				return fmt.Errorf("failed to create embedding for target file: %w", err)
-			}
-
-			l.Logger.Infof("成功为目标文件创建向量 - 路径: %s", targetLinuxPath)
-		} else {
-			l.Logger.Infof("目标文件不在上传的ZIP中，仅删除源文件向量 - 路径: %s", targetLinuxPath)
-		}
-	}
-
-	return nil
-}
-
-// getUploadedFiles 获取上传的文件内容
-func (l *TaskLogic) getUploadedFiles() (map[string][]byte, bool) {
-	if len(l.uploadedFiles) > 0 {
-		return l.uploadedFiles, true
-	}
-	return nil, false
-}
-
-// createEmbeddingForFile 为文件创建向量
-func (l *TaskLogic) createEmbeddingForFile(ctx context.Context, codebase *model.Codebase, filePath string, content []byte) error {
-	l.Logger.Infof("开始为文件创建向量 - 路径: %s, 大小: %d bytes", filePath, len(content))
-
-	// 创建源文件对象
-	sourceFile := &types.SourceFile{
-		CodebaseId:   codebase.ID,
-		CodebasePath: codebase.Path,
-		CodebaseName: codebase.Name,
-		Path:         filePath,
-		Content:      content,
-	}
-
-	// 使用代码分割器分割文件
-	chunks, err := l.svcCtx.CodeSplitter.Split(sourceFile)
-	if err != nil {
-		l.Logger.Errorf("分割文件失败 - 路径: %s, 错误: %v", filePath, err)
-		if parser.IsNotSupportedFileError(err) {
-			l.Logger.Infof("文件类型不支持，跳过向量化 - 路径: %s", filePath)
-			return nil
-		}
-		return fmt.Errorf("failed to split file: %w", err)
-	}
-
-	if len(chunks) == 0 {
-		l.Logger.Infof("文件分割后没有产生代码块，跳过向量化 - 路径: %s", filePath)
-		return nil
-	}
-
-	// 为每个代码块设置代码库信息
-	for _, chunk := range chunks {
-		chunk.CodebaseId = codebase.ID
-		chunk.CodebasePath = codebase.Path
-		chunk.CodebaseName = codebase.Name
-	}
-
-	// 创建向量存储选项
-	options := vector.Options{
-		CodebaseId:   codebase.ID,
-		CodebasePath: codebase.Path,
-		CodebaseName: codebase.Name,
-	}
-
-	// 插入向量到数据库
-	err = l.svcCtx.VectorStore.UpsertCodeChunks(ctx, chunks, options)
-	if err != nil {
-		l.Logger.Errorf("插入向量失败 - 路径: %s, 错误: %v", filePath, err)
-		return fmt.Errorf("failed to upsert code chunks: %w", err)
-	}
-
-	l.Logger.Infof("成功为文件创建向量 - 路径: %s, 代码块数量: %d", filePath, len(chunks))
 	return nil
 }
 

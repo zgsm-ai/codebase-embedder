@@ -8,7 +8,6 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
-	redisstore "github.com/zgsm-ai/codebase-indexer/internal/store/redis"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -38,25 +37,6 @@ func NewCleaner(ctx context.Context, svcCtx *svc.ServiceContext) (Job, error) {
 	cr := cron.New() // 创建默认 Cron 实例（支持秒级精度）
 	// 添加任务（参数：Cron 表达式, 要执行的函数）
 	_, err := cr.AddFunc(svcCtx.Config.Cleaner.Cron, func() {
-		// aquice lock
-		mux, locked, err := svcCtx.DistLock.TryLock(ctx, cleanLockKey, lockTimeout)
-		if err != nil {
-			logx.Errorf("cleaner try lock error: %v", err)
-			return
-		}
-		if !locked {
-			logx.Infof("cleaner lock %s is already locked ,return", cleanLockKey)
-			return
-		}
-		defer func(DistLock redisstore.DistributedLock, ctx context.Context, key string) {
-			err := DistLock.Unlock(ctx, mux)
-			if err != nil {
-				logx.Errorf("cleaner unlock %s error: %v", cleanLockKey, err)
-			}
-			logx.Errorf("cleaner unlock successfully.")
-		}(svcCtx.DistLock, ctx, cleanLockKey)
-
-		logx.Infof("cleaner get lock %s successfully, start.", cleanLockKey)
 
 		expireDays := time.Duration(svcCtx.Config.Cleaner.CodebaseExpireDays) * 24 * time.Hour
 		expiredDate := time.Now().Add(-expireDays)
