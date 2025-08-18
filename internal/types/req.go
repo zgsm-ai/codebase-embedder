@@ -54,6 +54,8 @@ type SemanticFileItem struct {
 	Content  string  `json:"content"`  // 代码片段
 	FilePath string  `json:"filePath"` // 文件相对路径
 	Score    float32 `json:"score"`    // 匹配得分
+	StartLine int     `json:"startLine"` // 代码片段起始行
+	EndLine   int     `json:"endLine"`   // 代码片段结束行
 }
 
 type SemanticSearchRequest struct {

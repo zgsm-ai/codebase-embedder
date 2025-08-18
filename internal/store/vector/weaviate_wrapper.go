@@ -335,18 +335,19 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 		content := ""
 		filePath := getStringValue(obj, MetadataFilePath)
 
+		// 从MetadataRange中提取startLine和endLine（用于构建映射键）
+		var startLine, endLine int
+		if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
+			if first, ok := rangeValue[0].(float64); ok {
+				startLine = int(first)
+			}
+			if second, ok := rangeValue[2].(float64); ok {
+				endLine = int(second)
+			}
+		}
+
 		// 如果开启获取源码且有批量获取的内容，则使用获取到的内容
 		if r.cfg.FetchSourceCode && filePath != "" && codebasePath != "" {
-			// 从MetadataRange中提取startLine和endLine（用于构建映射键）
-			var startLine, endLine int
-			if rangeValue, ok := obj[MetadataRange].([]interface{}); ok && len(rangeValue) >= 2 {
-				if first, ok := rangeValue[0].(float64); ok {
-					startLine = int(first)
-				}
-				if second, ok := rangeValue[2].(float64); ok {
-					endLine = int(second)
-				}
-			}
 
 			// 构建映射键并查找批量获取的内容
 			fullPath := filepath.Join(codebasePath, filePath)
@@ -358,9 +359,11 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 
 		// Create SemanticFileItem with proper fields
 		item := &types.SemanticFileItem{
-			Content:  content,
-			FilePath: filePath,
-			Score:    float32(getFloatValue(additional, "certainty")), // Convert float64 to float32
+			Content:   content,
+			FilePath:  filePath,
+			StartLine: startLine,
+			EndLine:   endLine,
+			Score:     float32(getFloatValue(additional, "certainty")), // Convert float64 to float32
 		}
 
 		items = append(items, item)
@@ -1421,6 +1424,79 @@ func (r *weaviateWrapper) getRecordsByPathPrefix(ctx context.Context, pathPrefix
 
 	// 解析响应获取记录
 	return r.unmarshalRecordsResponse(res)
+}
+
+// DeleteDictionary 删除指定目录的记录，通过匹配filePath的前缀
+func (r *weaviateWrapper) DeleteDictionary(ctx context.Context, dictionary string, options Options) error {
+	// 生成租户名称
+	tenantName, err := r.generateTenantName(options.CodebasePath)
+	if err != nil {
+		return fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// 确保路径前缀以/结尾，以便正确匹配子目录和文件
+	if dictionary != "" && !strings.HasSuffix(dictionary, "/") {
+		dictionary += "/"
+	}
+
+	// 获取所有匹配目录前缀的记录
+	records, err := r.getRecordsByPathPrefix(ctx, dictionary, tenantName)
+	if err != nil {
+		return fmt.Errorf("failed to get records by path prefix: %w", err)
+	}
+
+	if len(records) == 0 {
+		// 没有找到需要删除的记录
+		return nil
+	}
+
+	// 将记录转换为CodeChunk格式以便删除
+	chunks := make([]*types.CodeChunk, 0, len(records))
+	for _, record := range records {
+		chunk := &types.CodeChunk{
+			CodebaseId: record.CodebaseId,
+			FilePath:   record.FilePath,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	if len(chunks) > 0 {
+		chunkFilters := make([]*filters.WhereBuilder, len(chunks))
+		for i, chunk := range chunks {
+			if chunk.FilePath == types.EmptyString {
+				return fmt.Errorf("invalid chunk to delete: and filePath")
+			}
+			chunkFilters[i] = filters.Where().
+				WithOperator(filters.And).
+				WithOperands([]*filters.WhereBuilder{
+					filters.Where().
+						WithPath([]string{MetadataCodebaseId}).
+						WithOperator(filters.Equal).
+						WithValueInt(int64(chunk.CodebaseId)),
+					filters.Where().
+						WithPath([]string{MetadataFilePath}).
+						WithOperator(filters.Equal).
+						WithValueText(chunk.FilePath),
+				})
+		}
+
+		// Combine all chunk filters with OR to support batch deletion of files
+		combinedFilter := filters.Where().
+			WithOperator(filters.Or).
+			WithOperands(chunkFilters)
+
+		do, err := r.client.Batch().ObjectsBatchDeleter().
+			WithTenant(tenantName).WithWhere(
+			combinedFilter,
+		).WithClassName(r.className).Do(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to send delete chunks err:%w", err)
+		}
+		return CheckBatchDeleteErrors(do)
+	}
+
+	// 批量删除记录
+	return nil
 }
 
 // UpdateCodeChunksDictionary 更新代码块的目录路径，通过匹配filePath的前缀

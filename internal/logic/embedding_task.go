@@ -719,28 +719,11 @@ func (l *TaskLogic) deleteFilesFromVectorDB(ctx context.Context, codebase *model
 
 	l.Logger.Infof("准备从向量数据库中删除 %d 个文件，代码库ID: %d", len(filePaths), codebase.ID)
 
-	// 构建需要删除的 CodeChunk 列表
-	var chunks []*types.CodeChunk
 	for _, filePath := range filePaths {
 		// 将文件路径转换为Linux格式（正斜杠）
 		linuxPath := strings.ReplaceAll(filePath, "\\", "/")
-		chunk := &types.CodeChunk{
-			CodebaseId:   codebase.ID,
-			CodebasePath: codebase.Path,
-			FilePath:     linuxPath,
-		}
-		chunks = append(chunks, chunk)
 		l.Logger.Debugf("添加文件到删除列表: %s", linuxPath)
-	}
-
-	// 调用向量数据库的删除方法
-	options := vector.Options{
-		CodebasePath: codebase.Path,
-	}
-	err := l.svcCtx.VectorStore.DeleteCodeChunks(ctx, chunks, options)
-	if err != nil {
-		l.Logger.Errorf("删除向量数据库中的文件失败: %v", err)
-		return fmt.Errorf("failed to delete files from vector database: %w", err)
+		l.svcCtx.VectorStore.DeleteDictionary(ctx, filePath, vector.Options{CodebaseId: codebase.ID, CodebasePath: codebase.Path})
 	}
 
 	l.Logger.Infof("成功从向量数据库中删除了 %d 个文件", len(filePaths))

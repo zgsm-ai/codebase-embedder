@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
-	"strings"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"gorm.io/gorm"
@@ -55,17 +55,7 @@ func (l *IndexLogic) DeleteIndex(req *types.DeleteIndexRequest) (resp *types.Del
 		return &types.DeleteIndexResponseData{}, nil
 	}
 
-	// 如果指定了filePaths，则只删除指定文件的嵌入数据
-	var deleteChunks []*types.CodeChunk
-	for _, path := range strings.Split(filePaths, ",") {
-		deleteChunks = append(deleteChunks, &types.CodeChunk{
-			CodebaseId:   codebase.ID,
-			CodebasePath: codebase.Path,
-			FilePath:     strings.TrimSpace(path),
-		})
-	}
-
-	if err = l.svcCtx.VectorStore.DeleteCodeChunks(ctx, deleteChunks, vector.Options{CodebaseId: codebase.ID,
+	if err = l.svcCtx.VectorStore.DeleteDictionary(ctx, filePaths, vector.Options{CodebaseId: codebase.ID,
 		CodebasePath: codebase.Path}); err != nil {
 		return nil, fmt.Errorf("failed to delete embedding index, err:%w", err)
 	}

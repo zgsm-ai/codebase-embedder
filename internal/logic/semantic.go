@@ -2,14 +2,11 @@ package logic
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/store/vector"
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
-	"gorm.io/gorm"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -51,21 +48,15 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest, authori
 	if err != nil {
 		return nil, err
 	}
-	clientId := req.ClientId
-	clientPath := req.CodebasePath
 
-	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NewRecordNotFoundErr(types.NameCodeBase, fmt.Sprintf("client_id: %s, clientPath: %s", clientId, clientPath))
-	}
-	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
+	ctx := context.WithValue(l.ctx, tracer.Key, req.ClientId)
 
 	documents, err := l.svcCtx.VectorStore.Query(ctx, req.Query, topK,
 		vector.Options{
-			CodebaseId:    codebase.ID,
-			ClientId:      clientId,
-			CodebasePath:  codebase.Path,
-			CodebaseName:  codebase.Name,
+			CodebaseId:    0,
+			ClientId:      req.ClientId,
+			CodebasePath:  req.CodebasePath,
+			CodebaseName:  "",
 			Authorization: authorization,
 		})
 	if err != nil {
