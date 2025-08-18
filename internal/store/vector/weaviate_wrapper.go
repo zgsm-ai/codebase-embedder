@@ -1422,3 +1422,53 @@ func (r *weaviateWrapper) getRecordsByPathPrefix(ctx context.Context, pathPrefix
 	// 解析响应获取记录
 	return r.unmarshalRecordsResponse(res)
 }
+
+// UpdateCodeChunksDictionary 更新代码块的目录路径，通过匹配filePath的前缀
+func (r *weaviateWrapper) UpdateCodeChunksDictionary(ctx context.Context, codebasePath string, dictionary string, newDictionary string) error {
+	// 生成租户名称
+	tenantName, err := r.generateTenantName(codebasePath)
+	if err != nil {
+		return fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// 确保路径前缀以/结尾，以便正确匹配子目录和文件
+	if dictionary != "" && !strings.HasSuffix(dictionary, "/") {
+		dictionary += "/"
+	}
+	if newDictionary != "" && !strings.HasSuffix(newDictionary, "/") {
+		newDictionary += "/"
+	}
+
+	// 获取所有匹配原目录前缀的记录
+	records, err := r.getRecordsByPathPrefix(ctx, dictionary, tenantName)
+	if err != nil {
+		return fmt.Errorf("failed to get records by path prefix: %w", err)
+	}
+
+	if len(records) == 0 {
+		// 没有找到需要更新的记录
+		return nil
+	}
+
+	// 批量更新记录路径
+	for _, record := range records {
+		// 构建新的文件路径：将原目录前缀替换为新目录前缀
+		newFilePath := strings.Replace(record.FilePath, dictionary, newDictionary, 1)
+
+		// 获取对象的ID
+		objectIds, err := r.getObjectIdsByPath(ctx, record.CodebaseId, record.FilePath, tenantName)
+		if err != nil {
+			return fmt.Errorf("failed to get object ids by path: %w", err)
+		}
+
+		// 更新每个对象的路径
+		for _, objectId := range objectIds {
+			err = r.updateObjectPath(ctx, objectId, newFilePath, tenantName, record)
+			if err != nil {
+				return fmt.Errorf("failed to update object path: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
