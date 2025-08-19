@@ -88,7 +88,7 @@ data:
       max_concurrency: 5
       skip_patterns: []
     TokenLimit:
-      max_running_tasks: 1  
+      max_running_tasks: 100  
       enabled: true    
 ---
 apiVersion: apps/v1

@@ -29,5 +29,5 @@ main.exe
 bin/*
 .roo
 docs/task.md
-testfiles
 cmd.sh
+testfiles

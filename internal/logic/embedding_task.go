@@ -173,14 +173,14 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 			var fileStatusItems []types.FileStatusItem
 
 			// 添加任务
-			for path, _ := range files {
-				fileStatusItem := types.FileStatusItem{
-					Path:    path, // 使用当前处理的文件路径，而不是codebasePath
-					Status:  "processing",
-					Operate: fileOperations[path],
-				}
-				fileStatusItems = append(fileStatusItems, fileStatusItem)
-			}
+			// for path, _ := range files {
+			// 	fileStatusItem := types.FileStatusItem{
+			// 		Path:    path, // 使用当前处理的文件路径，而不是codebasePath
+			// 		Status:  "processing",
+			// 		Operate: fileOperations[path],
+			// 	}
+			// 	fileStatusItems = append(fileStatusItems, fileStatusItem)
+			// }
 
 			// 删除任务
 			for path, op := range fileOperations {

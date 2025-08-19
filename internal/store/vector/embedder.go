@@ -136,31 +136,32 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 						status.Process = "processing"
 						status.TotalProgress = progress
 
-						tracer.WithTrace(ctx).Infof(" requestid %s  ,finish before %v", e.requestId, status.FileList)
+						// tracer.WithTrace(ctx).Infof(" requestid %s  ,finish before %v", e.requestId, status.FileList)
 
 						// 将这批文件的状态添加到FileList中
 						for _, filePath := range completedFiles {
 							// 检查文件是否已在FileList中
-							found := false
+							// found := false
 							for i, item := range status.FileList {
 								if item.Path == filePath {
 									// 更新现有文件状态
 									status.FileList[i].Status = "completed"
-									found = true
+									// found = true
 									break
 								}
 							}
 							// 如果文件不在FileList中，则添加新项
-							if !found {
-								status.FileList = append(status.FileList, types.FileStatusItem{
-									Path:    filePath,
-									Status:  "completed",
-									Operate: "add", // 默认操作类型为add
-								})
-							}
+							// if !found {
+							// 	tracer.WithTrace(ctx).Infof("not found in filePath: %v  ,fileList %v", filePath, status.FileList)
+							// 	status.FileList = append(status.FileList, types.FileStatusItem{
+							// 		Path:    filePath,
+							// 		Status:  "completed",
+							// 		Operate: "add", // 默认操作类型为add
+							// 	})
+							// }
 						}
 
-						tracer.WithTrace(ctx).Infof(" requestid %s  ,finish %v", e.requestId, status.FileList)
+						// tracer.WithTrace(ctx).Infof(" requestid %s  ,finish %v", e.requestId, status.FileList)
 
 					})
 					if err != nil {
