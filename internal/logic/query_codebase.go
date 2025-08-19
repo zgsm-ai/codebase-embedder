@@ -58,7 +58,7 @@ func (l *QueryCodebaseLogic) QueryCodebase(req *types.CodebaseQueryRequest) (*ty
 	done := make(chan bool, 1)
 	go func() {
 		// 获取汇总信息
-		summary, queryErr = vectorStore.QueryCodebaseStats(l.ctx, codebaseInfo.ID, codebaseInfo.ClientPath)
+		summary, queryErr = vectorStore.QueryCodebaseStats(l.ctx, req.ClientId, codebaseInfo.ClientPath)
 		if queryErr != nil {
 			done <- true
 			return
@@ -86,7 +86,7 @@ func (l *QueryCodebaseLogic) QueryCodebase(req *types.CodebaseQueryRequest) (*ty
 		}
 
 		// 获取详细记录
-		records, queryErr = vectorStore.QueryCodebaseRecords(l.ctx, codebaseInfo.ID, codebaseInfo.ClientPath)
+		records, queryErr = vectorStore.QueryCodebaseRecords(l.ctx, req.ClientId, codebaseInfo.ClientPath)
 		done <- true
 	}()
 

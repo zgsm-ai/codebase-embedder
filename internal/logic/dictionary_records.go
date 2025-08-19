@@ -42,7 +42,7 @@ func (l *DictionaryRecordsLogic) GetDictionaryRecords(req *types.DictionaryRecor
 	}
 
 	// 查询目录记录
-	records, err := queryStore.QueryDictionaryRecords(l.ctx, req.CodebasePath, req.Dictionary)
+	records, err := queryStore.QueryDictionaryRecords(l.ctx, req.ClientId, req.CodebasePath, req.Dictionary)
 	if err != nil {
 		l.Errorf("查询目录记录失败, codebasePath: %s, dictionary: %s, error: %v", req.CodebasePath, req.Dictionary, err)
 		return nil, fmt.Errorf("查询目录记录失败: %w", err)

@@ -36,17 +36,9 @@ func (l *CodebaseTreeLogic) GetCodebaseTree(req *types.CodebaseTreeRequest) (*ty
 	}
 	log.Printf("[DEBUG] 参数验证通过")
 
-	// 权限验证
-	codebaseId, err := l.verifyCodebasePermission(req)
-	if err != nil {
-		log.Printf("[DEBUG] 权限验证失败: %v", err)
-		return nil, errs.FileNotFound
-	}
-	log.Printf("[DEBUG] 权限验证通过，获得 codebaseId: %d", codebaseId)
-
 	// 构建目录树
 	log.Printf("[DEBUG] 开始构建目录树...")
-	tree, err := l.buildDirectoryTree(codebaseId, req)
+	tree, err := l.buildDirectoryTree(req.ClientId, req)
 	if err != nil {
 		log.Printf("[DEBUG] 构建目录树失败: %v", err)
 		return nil, fmt.Errorf("构建目录树失败: %w", err)
@@ -87,40 +79,6 @@ func (l *CodebaseTreeLogic) validateRequest(req *types.CodebaseTreeRequest) erro
 	return nil
 }
 
-func (l *CodebaseTreeLogic) verifyCodebasePermission(req *types.CodebaseTreeRequest) (int32, error) {
-	// 添加调试日志
-	log.Printf("[DEBUG] verifyCodebasePermission - 开始权限验证")
-	log.Printf("[DEBUG] verifyCodebasePermission - ClientId: %s", req.ClientId)
-	log.Printf("[DEBUG] verifyCodebasePermission - CodebasePath: %s", req.CodebasePath)
-	log.Printf("[DEBUG] verifyCodebasePermission - CodebaseName: %s", req.CodebaseName)
-
-	// 检查是否应该根据 ClientId 和 CodebasePath 从数据库查询真实的 codebaseId
-	log.Printf("[DEBUG] verifyCodebasePermission - 检查数据库中是否存在匹配的 codebase 记录")
-
-	// 尝试根据 ClientId 和 CodebasePath 查询真实的 codebase
-	codebase, err := l.svcCtx.Querier.Codebase.WithContext(l.ctx).
-		Where(l.svcCtx.Querier.Codebase.ClientID.Eq(req.ClientId)).
-		Where(l.svcCtx.Querier.Codebase.ClientPath.Eq(req.CodebasePath)).
-		First()
-
-	if err != nil {
-		log.Printf("[DEBUG] verifyCodebasePermission - 数据库查询失败或未找到匹配记录: %v", err)
-		log.Printf("[DEBUG] verifyCodebasePermission - 将使用模拟的 codebaseId: 1")
-		// 这里应该实现实际的权限验证逻辑
-		// 由于是MVP版本，我们暂时返回一个模拟的ID
-		codebaseId := int32(1)
-		log.Printf("[DEBUG] verifyCodebasePermission - 返回模拟 codebaseId: %d", codebaseId)
-		return codebaseId, nil
-	}
-
-	log.Printf("[DEBUG] verifyCodebasePermission - 找到匹配的 codebase 记录")
-	log.Printf("[DEBUG] verifyCodebasePermission - 数据库记录 ID: %d, Name: %s, Status: %s",
-		codebase.ID, codebase.Name, codebase.Status)
-
-	log.Printf("[DEBUG] verifyCodebasePermission - 返回真实的 codebaseId: %d", codebase.ID)
-	return codebase.ID, nil
-}
-
 // printTreeStructure 递归打印树结构
 func (l *CodebaseTreeLogic) printTreeStructure(tree *types.TreeNode) {
 	// 递归打印树结构
@@ -138,15 +96,12 @@ func (l *CodebaseTreeLogic) printTreeStructure(tree *types.TreeNode) {
 	printTree(tree, "")
 }
 
-func (l *CodebaseTreeLogic) buildDirectoryTree(codebaseId int32, req *types.CodebaseTreeRequest) (*types.TreeNode, error) {
+func (l *CodebaseTreeLogic) buildDirectoryTree(clientId string, req *types.CodebaseTreeRequest) (*types.TreeNode, error) {
 	log.Printf("[DEBUG] ===== buildDirectoryTree 开始执行 =====")
-	log.Printf("[DEBUG] 输入参数: codebaseId=%d, codebasePath=%s", codebaseId, req.CodebasePath)
-
-	// 检查数据库中是否存在该 codebaseId
-	l.checkCodebaseInDatabase(codebaseId)
+	log.Printf("[DEBUG] 输入参数: clientId=%s, codebasePath=%s", clientId, req.CodebasePath)
 
 	// 从向量存储中获取文件路径
-	records, err := l.getRecordsFromVectorStore(codebaseId, req.CodebasePath)
+	records, err := l.getRecordsFromVectorStore(clientId, req.CodebasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -191,18 +146,18 @@ func (l *CodebaseTreeLogic) checkCodebaseInDatabase(codebaseId int32) {
 }
 
 // getRecordsFromVectorStore 从向量存储中获取文件记录
-func (l *CodebaseTreeLogic) getRecordsFromVectorStore(codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error) {
+func (l *CodebaseTreeLogic) getRecordsFromVectorStore(clientId string, codebasePath string) ([]*types.CodebaseRecord, error) {
 	if l.svcCtx.VectorStore == nil {
 		return nil, fmt.Errorf("VectorStore 未初始化")
 	}
 
-	records, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, codebaseId, codebasePath)
+	records, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, clientId, codebasePath)
 	if err != nil {
 		return nil, fmt.Errorf("查询文件路径失败: %w", err)
 	}
 
 	if len(records) == 0 {
-		l.logEmptyRecordsDiagnostic(codebaseId, codebasePath)
+		l.logEmptyRecordsDiagnostic(clientId, codebasePath)
 	}
 
 	// 合并相同文件路径的记录
@@ -281,7 +236,7 @@ func (l *CodebaseTreeLogic) mergeSingleFileRecords(records []*types.CodebaseReco
 }
 
 // logEmptyRecordsDiagnostic 记录空记录的诊断信息
-func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(codebaseId int32, codebasePath string) {
+func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(clientId string, codebasePath string) {
 	// 详细诊断：检查数据库和向量存储的连接状态
 	log.Printf("[DEBUG] ===== 深度诊断：数据库和向量存储状态检查 =====")
 
@@ -307,7 +262,7 @@ func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(codebaseId int32, codebase
 	log.Printf("[DEBUG] 3. 尝试查询向量存储中的所有记录...")
 	if l.svcCtx.VectorStore != nil {
 		// 尝试使用一个空的 codebasePath 来获取所有记录
-		allRecords, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, codebaseId, "")
+		allRecords, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, clientId, "")
 		if err != nil {
 			log.Printf("[DEBUG] ❌ 查询所有向量存储记录失败: %v", err)
 		} else {
@@ -323,7 +278,7 @@ func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(codebaseId int32, codebase
 
 	// 4. 检查请求参数的详细情况
 	log.Printf("[DEBUG] 4. 请求参数详细分析:")
-	log.Printf("[DEBUG]   codebaseId: %d (类型: %T)", codebaseId, codebaseId)
+	log.Printf("[DEBUG]   clientId: %s (类型: %T)", clientId, clientId)
 	log.Printf("[DEBUG]   req.CodebasePath: '%s' (长度: %d)", codebasePath, len(codebasePath))
 	log.Printf("[DEBUG]   req.CodebasePath 为空: %v", codebasePath == "")
 	log.Printf("[DEBUG]   req.CodebasePath 为 '.': %v", codebasePath == ".")

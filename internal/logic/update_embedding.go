@@ -31,13 +31,13 @@ func (l *UpdateEmbeddingLogic) UpdateEmbeddingPath(req *types.UpdateEmbeddingPat
 	var modifiedFiles []string
 
 	// 处理目录情况，使用 UpdateCodeChunksDictionary 接口
-	err = l.svcCtx.VectorStore.UpdateCodeChunksDictionary(l.ctx, codebasePath, oldPath, newPath)
+	err = l.svcCtx.VectorStore.UpdateCodeChunksDictionary(l.ctx, req.ClientId, codebasePath, oldPath, newPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update directory paths: %w", err)
 	}
 
 	// 获取更新后的记录以返回修改的文件列表
-	records, err := l.svcCtx.VectorStore.GetDictionaryRecords(l.ctx, codebasePath, newPath)
+	records, err := l.svcCtx.VectorStore.GetDictionaryRecords(l.ctx, req.ClientId, codebasePath, newPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get updated dictionary records: %w", err)
 	}

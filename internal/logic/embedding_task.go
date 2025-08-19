@@ -227,7 +227,7 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 	// 执行重命名任务
 	if len(renameTasks) > 0 {
 		l.Logger.Infof("开始执行 %d 个重命名任务", len(renameTasks))
-		if err := l.executeRenameTasks(ctx, codebase, renameTasks); err != nil {
+		if err := l.executeRenameTasks(ctx, clientId, req.CodebasePath, renameTasks); err != nil {
 			l.Logger.Errorf("执行重命名任务失败: %v", err)
 			// 不返回错误，继续处理其他任务
 		} else {
@@ -739,12 +739,12 @@ func (l *TaskLogic) getSyncMetadata() *types.SyncMetadata {
 }
 
 // executeRenameTasks 执行重命名任务
-func (l *TaskLogic) executeRenameTasks(ctx context.Context, codebase *model.Codebase, renameTasks []types.FileListItem) error {
+func (l *TaskLogic) executeRenameTasks(ctx context.Context, clientId string, codebasePath string, renameTasks []types.FileListItem) error {
 	for _, task := range renameTasks {
 		l.Logger.Infof("开始执行重命名任务 - 源路径: %s, 目标路径: %s", task.Path, task.TargetPath)
 
 		// 更新向量数据库中的文件路径
-		if err := l.renameFileInVectorDB(ctx, codebase, task.Path, task.TargetPath); err != nil {
+		if err := l.renameFileInVectorDB(ctx, clientId, codebasePath, task.Path, task.TargetPath); err != nil {
 			l.Logger.Errorf("重命名文件失败 - 源路径: %s, 目标路径: %s, 错误: %v",
 				task.Path, task.TargetPath, err)
 			return err
@@ -766,14 +766,14 @@ func (l *TaskLogic) executeRenameTasks(ctx context.Context, codebase *model.Code
 }
 
 // renameFileInVectorDB 在向量数据库中重命名文件
-func (l *TaskLogic) renameFileInVectorDB(ctx context.Context, codebase *model.Codebase, sourcePath, targetPath string) error {
+func (l *TaskLogic) renameFileInVectorDB(ctx context.Context, clientId string, codebasePath string, sourcePath, targetPath string) error {
 	l.Logger.Infof("开始执行向量数据库中的文件重命名 - 源路径: %s, 目标路径: %s", sourcePath, targetPath)
 
 	// 将文件路径转换为Linux格式（正斜杠）
 	sourceLinuxPath := strings.ReplaceAll(sourcePath, "\\", "/")
 	targetLinuxPath := strings.ReplaceAll(targetPath, "\\", "/")
 
-	l.svcCtx.VectorStore.UpdateCodeChunksDictionary(ctx, codebase.Path, sourceLinuxPath, targetLinuxPath)
+	l.svcCtx.VectorStore.UpdateCodeChunksDictionary(ctx, clientId, codebasePath, sourceLinuxPath, targetLinuxPath)
 
 	return nil
 }

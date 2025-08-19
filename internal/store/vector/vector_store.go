@@ -12,17 +12,17 @@ import (
 
 // Store 向量存储接口
 type Store interface {
-	DeleteByCodebase(ctx context.Context, codebaseId int32, codebasePath string) error
-	GetIndexSummary(ctx context.Context, codebaseId int32, codebasePath string) (*types.EmbeddingSummary, error)
-	GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error)
-	GetFileRecords(ctx context.Context, codebasePath string, filePath string) ([]*types.CodebaseRecord, error)
-	GetDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error)
+	DeleteByCodebase(ctx context.Context, clientId string, codebasePath string) error
+	GetIndexSummary(ctx context.Context, clientId string, codebasePath string) (*types.EmbeddingSummary, error)
+	GetCodebaseRecords(ctx context.Context, clientId string, codebasePath string) ([]*types.CodebaseRecord, error)
+	GetFileRecords(ctx context.Context, clientId string, codebasePath string, filePath string) ([]*types.CodebaseRecord, error)
+	GetDictionaryRecords(ctx context.Context, clientId string, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error)
 	InsertCodeChunks(ctx context.Context, docs []*types.CodeChunk, options Options) error
 	UpsertCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
 	DeleteCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error
 	DeleteDictionary(ctx context.Context, dictionary string, options Options) error
 	UpdateCodeChunksPaths(ctx context.Context, updates []*types.CodeChunkPathUpdate, options Options) error
-	UpdateCodeChunksDictionary(ctx context.Context, codebasePath string, dictionary string, newDictionary string) error
+	UpdateCodeChunksDictionary(ctx context.Context, clientId string, codebasePath string, dictionary string, newDictionary string) error
 	Query(ctx context.Context, query string, topK int, options Options) ([]*types.SemanticFileItem, error)
 	Close()
 }

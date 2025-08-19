@@ -69,7 +69,7 @@ func (l *VectorsSummaryLogic) VectorsSummary(req *types.GetAllVectorsSummaryRequ
 			var embeddingIndexTask *model.IndexHistory
 
 			// 获取向量汇总信息
-			embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummary(timeoutCtx, cb.ID, cb.Path)
+			embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummary(timeoutCtx, cb.ClientID, cb.Path)
 			if err != nil {
 				if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
 					tracer.WithTrace(ctx).Errorf("embedding summary query timed out after %v for codebase %d", timeout, cb.ID)

@@ -42,7 +42,7 @@ func (l *FileRecordsLogic) GetFileRecords(req *types.FileRecordsRequest) (*types
 	}
 
 	// 查询文件记录
-	records, err := queryStore.QueryFileRecords(l.ctx, req.CodebasePath, req.FilePath)
+	records, err := queryStore.QueryFileRecords(l.ctx, req.ClientId, req.CodebasePath, req.FilePath)
 	if err != nil {
 		l.Errorf("查询文件记录失败, codebasePath: %s, filePath: %s, error: %v", req.CodebasePath, req.FilePath, err)
 		return nil, fmt.Errorf("查询文件记录失败: %w", err)

@@ -3,11 +3,13 @@ package vector
 import (
 	"errors"
 	"fmt"
+
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
 var ErrInvalidCodebasePath = errors.New("invalid codebasePath")
+var ErrInvalidClientId = errors.New("invalid clientId")
 var ErrEmptyResponse = errors.New("response is empty")
 var ErrInvalidResponse = errors.New("response is invalid")
 

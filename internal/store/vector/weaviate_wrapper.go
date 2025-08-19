@@ -112,9 +112,10 @@ func NewWithStatusManager(cfg config.VectorStoreConf, embedder Embedder, reranke
 	return store, nil
 }
 
-func (r *weaviateWrapper) GetIndexSummary(ctx context.Context, codebaseId int32, codebasePath string) (*types.EmbeddingSummary, error) {
+func (r *weaviateWrapper) GetIndexSummary(ctx context.Context, clientId string, codebasePath string) (*types.EmbeddingSummary, error) {
 	start := time.Now()
-	tenantName, err := r.generateTenantName(codebasePath)
+	// 使用 codebaseId 作为 clientId
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
 	}
@@ -130,13 +131,9 @@ func (r *weaviateWrapper) GetIndexSummary(ctx context.Context, codebaseId int32,
 		}},
 	}
 
-	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
-		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
-
 	res, err := r.client.GraphQL().Aggregate().
 		WithClassName(r.className).
 		WithFields(fields...).
-		WithWhere(codebaseFilter).
 		WithGroupBy(MetadataFilePath).
 		WithTenant(tenantName).
 		Do(ctx)
@@ -159,7 +156,7 @@ func (r *weaviateWrapper) DeleteCodeChunks(ctx context.Context, chunks []*types.
 		return nil // Nothing to delete
 	}
 
-	tenant, err := r.generateTenantName(options.CodebasePath)
+	tenant, err := r.generateTenantName(options.ClientId, options.CodebasePath)
 	if err != nil {
 		return err
 	}
@@ -203,7 +200,7 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 	if err != nil {
 		return nil, fmt.Errorf("failed to embed query: %w", err)
 	}
-	tenantName, err := r.generateTenantName(options.CodebasePath)
+	tenantName, err := r.generateTenantName(options.ClientId, options.CodebasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
 	}
@@ -387,19 +384,19 @@ func getFloatValue(obj map[string]interface{}, key string) float64 {
 	return 0
 }
 
-func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]*types.CodebaseRecord, error) {
+func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, clientId string, codebasePath string) ([]*types.CodebaseRecord, error) {
 	// 添加调试日志
-	fmt.Printf("[DEBUG] GetCodebaseRecords - 开始执行，codebaseId: %d, codebasePath: %s\n", codebaseId, codebasePath)
+	fmt.Printf("[DEBUG] GetCodebaseRecords - 开始执行，clientId: %s, codebasePath: %s\n", clientId, codebasePath)
 
 	// 检查输入参数
-	if codebaseId == 0 {
-		fmt.Printf("[DEBUG] 警告: codebaseId 为 0，这可能不正确\n")
+	if clientId == "" {
+		fmt.Printf("[DEBUG] 警告: codebaseId 为 为空字符串\n")
 	}
 	if codebasePath == "" {
 		fmt.Printf("[DEBUG] 警告: codebasePath 为空字符串\n")
 	}
 
-	tenantName, err := r.generateTenantName(codebasePath)
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		fmt.Printf("[DEBUG] 生成 tenantName 失败: %v\n", err)
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
@@ -431,10 +428,6 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 		{Name: MetadataSyncId},
 	}
 
-	// 构建过滤器
-	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
-		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
-
 	// 执行查询，获取所有记录
 	var allRecords []*types.CodebaseRecord
 	limit := 1000 // 每批获取1000条记录
@@ -442,13 +435,12 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 
 	for {
 		fmt.Printf("[DEBUG] 执行 GraphQL 查询 - offset: %d, limit: %d\n", offset, limit)
-		fmt.Printf("[DEBUG] GraphQL 查询参数 - className: %s, tenant: %s, codebaseId: %d\n",
-			r.className, tenantName, codebaseId)
+		fmt.Printf("[DEBUG] GraphQL 查询参数 - className: %s, tenant: %s, clientId: %s\n",
+			r.className, tenantName, clientId)
 
 		res, err := r.client.GraphQL().Get().
 			WithClassName(r.className).
 			WithFields(fields...).
-			WithWhere(codebaseFilter).
 			WithLimit(limit).
 			WithOffset(offset).
 			WithTenant(tenantName).
@@ -456,7 +448,6 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 
 		if err != nil {
 			fmt.Printf("[DEBUG] GraphQL 查询失败: %v\n", err)
-			fmt.Printf("[DEBUG] 错误详情 - 可能是 tenant 不存在或权限问题\n")
 			return nil, fmt.Errorf("failed to get codebase records: %w", err)
 		}
 
@@ -474,7 +465,7 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 
 		fmt.Printf("[DEBUG] 本批次获取记录数: %d\n", len(records))
 		if len(records) == 0 {
-			fmt.Printf("[DEBUG] 没有更多记录，结束查询 - tenant %s 中可能没有 codebaseId %d 的数据\n", tenantName, codebaseId)
+			fmt.Printf("[DEBUG] 没有更多记录，结束查询 - tenant %s 中可能没有 clientId %s 的数据\n", tenantName, clientId)
 			break
 		}
 
@@ -583,19 +574,16 @@ func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLRe
 func (r *weaviateWrapper) Close() {
 }
 
-func (r *weaviateWrapper) DeleteByCodebase(ctx context.Context, codebaseId int32, codebasePath string) error {
+func (r *weaviateWrapper) DeleteByCodebase(ctx context.Context, clientId string, codebasePath string) error {
 
-	tenant, err := r.generateTenantName(codebasePath)
+	// 使用 codebaseId 作为 clientId
+	tenant, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		return err
 	}
-	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
-		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
 
 	do, err := r.client.Batch().ObjectsBatchDeleter().
-		WithTenant(tenant).WithWhere(
-		codebaseFilter,
-	).WithClassName(r.className).Do(ctx)
+		WithTenant(tenant).WithClassName(r.className).Do(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to send delete codebase chunks, err:%w", err)
 	}
@@ -626,7 +614,7 @@ func (r *weaviateWrapper) UpdateCodeChunksPaths(ctx context.Context, updates []*
 		return nil
 	}
 
-	tenantName, err := r.generateTenantName(options.CodebasePath)
+	tenantName, err := r.generateTenantName(options.ClientId, options.CodebasePath)
 	if err != nil {
 		return err
 	}
@@ -940,7 +928,7 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 	if len(docs) == 0 {
 		return nil
 	}
-	tenantName, err := r.generateTenantName(docs[0].CodebasePath)
+	tenantName, err := r.generateTenantName(options.ClientId, docs[0].CodebasePath)
 	if err != nil {
 		return err
 	}
@@ -1239,15 +1227,22 @@ func (r *weaviateWrapper) createClassWithAutoTenantEnabled(client *goweaviate.Cl
 }
 
 // generateTenantName 使用 MD5 哈希生成合规租户名（32字符，纯十六进制）
-func (r *weaviateWrapper) generateTenantName(codebasePath string) (string, error) {
+func (r *weaviateWrapper) generateTenantName(clientId string, codebasePath string) (string, error) {
 	// 添加调试日志
-	fmt.Printf("[DEBUG] generateTenantName - 输入 codebasePath: %s\n", codebasePath)
+	fmt.Printf("[DEBUG] generateTenantName - 输入 clientId: %s, codebasePath: %s\n", clientId, codebasePath)
 
 	if codebasePath == types.EmptyString {
 		fmt.Printf("[DEBUG] generateTenantName - codebasePath 为空字符串\n")
 		return types.EmptyString, ErrInvalidCodebasePath
 	}
-	hash := md5.Sum([]byte(codebasePath))     // 计算 MD5 哈希
+	if clientId == types.EmptyString {
+		fmt.Printf("[DEBUG] generateTenantName - clientId 为空字符串\n")
+		return types.EmptyString, ErrInvalidClientId
+	}
+
+	// 将 clientId 和 codebasePath 组合起来生成哈希
+	combined := clientId + ":" + codebasePath
+	hash := md5.Sum([]byte(combined))         // 计算 MD5 哈希
 	tenantName := hex.EncodeToString(hash[:]) // 转为32位十六进制字符串
 
 	fmt.Printf("[DEBUG] generateTenantName - 生成的 tenantName: %s\n", tenantName)
@@ -1307,9 +1302,10 @@ func (r *weaviateWrapper) unmarshalSummarySearchResponse(res *models.GraphQLResp
 }
 
 // GetFileRecords 根据文件路径获取代码记录
-func (r *weaviateWrapper) GetFileRecords(ctx context.Context, codebasePath string, filePath string) ([]*types.CodebaseRecord, error) {
+func (r *weaviateWrapper) GetFileRecords(ctx context.Context, clientId string, codebasePath string, filePath string) ([]*types.CodebaseRecord, error) {
 	// 生成租户名称
-	tenantName, err := r.generateTenantName(codebasePath)
+	// 使用默认的 clientId，因为函数参数中没有提供
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
 	}
@@ -1319,9 +1315,10 @@ func (r *weaviateWrapper) GetFileRecords(ctx context.Context, codebasePath strin
 }
 
 // GetDictionaryRecords 获取指定目录的记录，通过匹配filePath的前缀
-func (r *weaviateWrapper) GetDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error) {
+func (r *weaviateWrapper) GetDictionaryRecords(ctx context.Context, clientId string, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error) {
 	// 生成租户名称
-	tenantName, err := r.generateTenantName(codebasePath)
+	// 使用默认的 clientId，因为函数参数中没有提供
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
 	}
@@ -1387,7 +1384,7 @@ func (r *weaviateWrapper) getRecordsByPathPrefix(ctx context.Context, pathPrefix
 // DeleteDictionary 删除指定目录的记录，通过匹配filePath的前缀
 func (r *weaviateWrapper) DeleteDictionary(ctx context.Context, dictionary string, options Options) error {
 	// 生成租户名称
-	tenantName, err := r.generateTenantName(options.CodebasePath)
+	tenantName, err := r.generateTenantName(options.ClientId, options.CodebasePath)
 	if err != nil {
 		return fmt.Errorf("failed to generate tenant name: %w", err)
 	}
@@ -1458,9 +1455,9 @@ func (r *weaviateWrapper) DeleteDictionary(ctx context.Context, dictionary strin
 }
 
 // UpdateCodeChunksDictionary 更新代码块的目录路径，通过匹配filePath的前缀
-func (r *weaviateWrapper) UpdateCodeChunksDictionary(ctx context.Context, codebasePath string, dictionary string, newDictionary string) error {
+func (r *weaviateWrapper) UpdateCodeChunksDictionary(ctx context.Context, clientId string, codebasePath string, dictionary string, newDictionary string) error {
 	// 生成租户名称
-	tenantName, err := r.generateTenantName(codebasePath)
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
 	if err != nil {
 		return fmt.Errorf("failed to generate tenant name: %w", err)
 	}

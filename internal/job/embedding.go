@@ -137,6 +137,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 				})
 			}
 			err := t.svcCtx.VectorStore.DeleteCodeChunks(ctx, deleteChunks, vector.Options{
+				ClientId:     t.params.ClientId,
 				CodebaseId:   t.params.CodebaseID,
 				CodebasePath: t.params.CodebasePath,
 				CodebaseName: t.params.CodebaseName,
@@ -153,6 +154,7 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 		// 批量处理结果
 		if len(addChunks) > 0 {
 			err := t.svcCtx.VectorStore.UpsertCodeChunks(ctx, addChunks, vector.Options{
+				ClientId:     t.params.ClientId,
 				CodebaseId:   t.params.CodebaseID,
 				CodebasePath: t.params.CodebasePath,
 				CodebaseName: t.params.CodebaseName,

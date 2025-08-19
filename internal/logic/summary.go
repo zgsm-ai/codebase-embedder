@@ -3,14 +3,11 @@ package logic
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
-	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 	"sync"
 	"time"
 
-	"github.com/zgsm-ai/codebase-indexer/internal/errs"
-	"gorm.io/gorm"
+	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
+	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
@@ -33,24 +30,14 @@ func NewSummaryLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SummaryLo
 }
 
 func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSummaryResonseData, error) {
-	clientId := req.ClientId
-	clientPath := req.CodebasePath
 
-	// 查找代码库记录
-	codebase, err := l.svcCtx.Querier.Codebase.FindByClientIdAndPath(l.ctx, clientId, clientPath)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NewRecordNotFoundErr(types.NameCodeBase, fmt.Sprintf("client_id: %s, clientPath: %s", clientId, clientPath))
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))
+	ctx := context.WithValue(l.ctx, tracer.Key, req.ClientId)
 
 	var (
 		wg                 sync.WaitGroup
 		embeddingSummary   *types.EmbeddingSummary
 		embeddingIndexTask *model.IndexHistory
+		embeddingErr       error
 	)
 
 	// 定义超时时间
@@ -64,38 +51,29 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 		defer cancel() // 避免资源泄漏
 
 		var err error
-		embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummary(timeoutCtx, codebase.ID, codebase.Path)
-		if err != nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				tracer.WithTrace(ctx).Errorf("embedding summary query timed out after %v", timeoutCtx)
-			} else {
-				tracer.WithTrace(ctx).Errorf("failed to get embedding summary, err:%v", err)
-			}
-			return
-		}
-	}()
-
-	// 获取最新的embedding索引任务（带超时控制）
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel() // 避免资源泄漏
-		embeddingIndexTask, err = l.svcCtx.Querier.IndexHistory.GetLatestTaskHistory(timeoutCtx, codebase.ID, types.TaskTypeEmbedding)
+		embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummary(timeoutCtx, req.ClientId, req.CodebasePath)
 		if err != nil {
 			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				tracer.WithTrace(timeoutCtx).Errorf("embedding index task query timed out after %v", timeout)
+				tracer.WithTrace(ctx).Errorf("embedding summary query timed out after %v", timeout)
+				embeddingErr = errors.New("embedding summary query timed out")
 			} else {
-				tracer.WithTrace(timeoutCtx).Errorf("failed to get latest embedding index task, err:%v", err)
+				tracer.WithTrace(ctx).Errorf("failed to get embedding summary, err:%v", err)
+				embeddingErr = err
 			}
+			return
 		}
 	}()
 
 	// 等待所有协程完成
 	wg.Wait()
 
+	// 检查是否有错误发生
+	if embeddingErr != nil {
+		return nil, embeddingErr
+	}
+
 	resp := &types.IndexSummaryResonseData{
-		TotalFiles: int(codebase.FileCount),
+		TotalFiles: 0,
 		Embedding: types.EmbeddingSummary{
 			Status: types.TaskStatusPending,
 		},
@@ -109,6 +87,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSumm
 	}
 
 	if embeddingSummary != nil {
+		resp.TotalFiles = embeddingSummary.TotalFiles
 		resp.Embedding.TotalChunks = embeddingSummary.TotalChunks
 		resp.Embedding.TotalFiles = embeddingSummary.TotalFiles
 	}

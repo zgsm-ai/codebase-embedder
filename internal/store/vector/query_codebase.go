@@ -25,11 +25,11 @@ func NewCodebaseQueryStore(store Store, logger logx.Logger) *CodebaseQueryStore 
 }
 
 // QueryCodebaseStats 查询代码库统计信息
-func (s *CodebaseQueryStore) QueryCodebaseStats(ctx context.Context, codebaseId int32, codebasePath string) (*types.CodebaseSummary, error) {
+func (s *CodebaseQueryStore) QueryCodebaseStats(ctx context.Context, clientId string, codebasePath string) (*types.CodebaseSummary, error) {
 	// 使用vector.Store接口的GetIndexSummary方法获取统计信息
-	embeddingSummary, err := s.store.GetIndexSummary(ctx, codebaseId, codebasePath)
+	embeddingSummary, err := s.store.GetIndexSummary(ctx, clientId, codebasePath)
 	if err != nil {
-		s.Errorf("查询代码库统计信息失败, codebaseId: %d, codebasePath: %s, error: %v", codebaseId, codebasePath, err)
+		s.Errorf("查询代码库统计信息失败, clientId: %s, codebasePath: %s, error: %v", clientId, codebasePath, err)
 		return nil, fmt.Errorf("查询代码库统计信息失败: %w", err)
 	}
 
@@ -93,11 +93,11 @@ func (s *CodebaseQueryStore) QueryIndexStats(ctx context.Context, codebaseId int
 }
 
 // QueryCodebaseRecords 查询代码库详细记录
-func (s *CodebaseQueryStore) QueryCodebaseRecords(ctx context.Context, codebaseId int32, codebasePath string) ([]types.CodebaseRecord, error) {
-	records, err := s.store.GetCodebaseRecords(ctx, codebaseId, codebasePath)
+func (s *CodebaseQueryStore) QueryCodebaseRecords(ctx context.Context, clientId string, codebasePath string) ([]types.CodebaseRecord, error) {
+	records, err := s.store.GetCodebaseRecords(ctx, clientId, codebasePath)
 	if err != nil {
-		s.Errorf("查询代码库详细记录失败, codebaseId: %d, codebasePath: %s, error: %v",
-			codebaseId, codebasePath, err)
+		s.Errorf("查询代码库详细记录失败, clientId: %s, codebasePath: %s, error: %v",
+			clientId, codebasePath, err)
 		return nil, fmt.Errorf("查询代码库详细记录失败: %w", err)
 	}
 
@@ -111,11 +111,11 @@ func (s *CodebaseQueryStore) QueryCodebaseRecords(ctx context.Context, codebaseI
 }
 
 // QueryDictionaryRecords 查询指定目录的详细记录，通过匹配filePath的前缀
-func (s *CodebaseQueryStore) QueryDictionaryRecords(ctx context.Context, codebasePath string, dictionary string) ([]types.CodebaseRecord, error) {
-	records, err := s.store.GetDictionaryRecords(ctx, codebasePath, dictionary)
+func (s *CodebaseQueryStore) QueryDictionaryRecords(ctx context.Context, clientId string, codebasePath string, dictionary string) ([]types.CodebaseRecord, error) {
+	records, err := s.store.GetDictionaryRecords(ctx, clientId, codebasePath, dictionary)
 	if err != nil {
-		s.Errorf("查询目录详细记录失败, codebasePath: %s, dictionary: %s, error: %v",
-			codebasePath, dictionary, err)
+		s.Errorf("查询目录详细记录失败, clientId: %s, codebasePath: %s, dictionary: %s, error: %v",
+			clientId, codebasePath, dictionary, err)
 		return nil, fmt.Errorf("查询目录详细记录失败: %w", err)
 	}
 
@@ -129,11 +129,11 @@ func (s *CodebaseQueryStore) QueryDictionaryRecords(ctx context.Context, codebas
 }
 
 // QueryFileRecords 查询指定文件的详细记录
-func (s *CodebaseQueryStore) QueryFileRecords(ctx context.Context, codebasePath string, filePath string) ([]types.CodebaseRecord, error) {
-	records, err := s.store.GetFileRecords(ctx, codebasePath, filePath)
+func (s *CodebaseQueryStore) QueryFileRecords(ctx context.Context, clientId string, codebasePath string, filePath string) ([]types.CodebaseRecord, error) {
+	records, err := s.store.GetFileRecords(ctx, clientId, codebasePath, filePath)
 	if err != nil {
-		s.Errorf("查询文件详细记录失败, codebasePath: %s, filePath: %s, error: %v",
-			codebasePath, filePath, err)
+		s.Errorf("查询文件详细记录失败, clientId: %s, codebasePath: %s, filePath: %s, error: %v",
+			clientId, codebasePath, filePath, err)
 		return nil, fmt.Errorf("查询文件详细记录失败: %w", err)
 	}
 
