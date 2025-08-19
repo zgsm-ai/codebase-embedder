@@ -96,6 +96,8 @@ func (l *TaskLogic) SubmitTask(req *types.IndexTaskRequest, r *http.Request) (re
 		l.Logger.Errorf("初始化代码库失败 - RequestId: %s, 错误: %v", req.RequestId, err)
 		return nil, err
 	}
+	codebase.Name = clientId // 更新代码库名称
+	codebase.Path = clientPath
 	l.Logger.Infof("初始化代码库成功 - RequestId: %s, CodebaseId: %d", req.RequestId, codebase.ID)
 
 	ctx := context.WithValue(l.ctx, tracer.Key, tracer.RequestTraceId(int(codebase.ID)))

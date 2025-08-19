@@ -135,10 +135,9 @@ func (l *QueryCodebaseLogic) verifyCodebasePermission(req *types.CodebaseQueryRe
 	// 使用 Querier 查询数据库验证clientId与codebase的关联关系
 	codebase, err := l.svcCtx.Querier.Codebase.WithContext(l.ctx).
 		Where(l.svcCtx.Querier.Codebase.ClientID.Eq(req.ClientId)).
-		Where(l.svcCtx.Querier.Codebase.Name.Eq(req.CodebaseName)).
 		Where(l.svcCtx.Querier.Codebase.ClientPath.Eq(req.CodebasePath)).
 		First()
-	
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			l.Infof("代码库不存在或无权限访问, clientId: %s, codebaseName: %s, codebasePath: %s",

@@ -407,7 +407,6 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 	fmt.Printf("[DEBUG] 生成的 tenantName: %s\n", tenantName)
 
 	// 添加调试日志：检查 Weaviate 连接状态
-	fmt.Printf("[DEBUG] 检查 Weaviate 连接状态...\n")
 	live, err := r.client.Misc().LiveChecker().Do(ctx)
 	if err != nil {
 		fmt.Printf("[DEBUG] Weaviate 连接检查失败: %v\n", err)
@@ -426,15 +425,15 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 		{Name: Content},
 		{Name: MetadataRange},
 		{Name: MetadataTokenCount},
+		{Name: MetadataCodebaseId},
+		{Name: MetadataCodebasePath},
+		{Name: MetadataCodebaseName},
+		{Name: MetadataSyncId},
 	}
 
 	// 构建过滤器
 	codebaseFilter := filters.Where().WithPath([]string{MetadataCodebaseId}).
 		WithOperator(filters.Equal).WithValueInt(int64(codebaseId))
-
-	fmt.Printf("[DEBUG] 构建的过滤器 - codebaseId: %d\n", codebaseId)
-	fmt.Printf("[DEBUG] 查询类名: %s\n", r.className)
-	fmt.Printf("[DEBUG] 使用的 tenant: %s\n", tenantName)
 
 	// 执行查询，获取所有记录
 	var allRecords []*types.CodebaseRecord
@@ -485,41 +484,6 @@ func (r *weaviateWrapper) GetCodebaseRecords(ctx context.Context, codebaseId int
 		// 如果获取的记录数小于limit，说明已经获取完所有记录
 		if len(records) < limit {
 			break
-		}
-	}
-
-	fmt.Printf("[DEBUG] 查询完成，总记录数: %d\n", len(allRecords))
-
-	// 分析查询结果
-	if len(allRecords) == 0 {
-		fmt.Printf("[DEBUG] 警告: 查询结果为空，可能的原因:\n")
-		fmt.Printf("[DEBUG] 1. Weaviate 中没有 codebaseId %d 的数据\n", codebaseId)
-		fmt.Printf("[DEBUG] 2. Tenant %s 不存在或没有权限访问\n", tenantName)
-		fmt.Printf("[DEBUG] 3. 过滤器条件过于严格\n")
-		fmt.Printf("[DEBUG] 4. Weaviate 连接配置有问题\n")
-		fmt.Printf("[DEBUG] 5. 类名 %s 不正确\n", r.className)
-	} else {
-		// 分析文件路径分布
-		pathAnalysis := make(map[string]int)
-		for _, record := range allRecords {
-			pathAnalysis[record.FilePath]++
-		}
-		fmt.Printf("[DEBUG] 查询结果分析:\n")
-		fmt.Printf("[DEBUG]   唯一文件路径数: %d\n", len(pathAnalysis))
-		fmt.Printf("[DEBUG]   总记录数: %d\n", len(allRecords))
-
-		// 显示前几个文件路径作为示例
-		count := 0
-		for path := range pathAnalysis {
-			if count < 5 {
-				fmt.Printf("[DEBUG]   示例文件路径 %d: %s\n", count+1, path)
-				count++
-			} else {
-				break
-			}
-		}
-		if len(pathAnalysis) > 5 {
-			fmt.Printf("[DEBUG]   ... (还有 %d 个文件路径未显示)\n", len(pathAnalysis)-5)
 		}
 	}
 
@@ -595,29 +559,22 @@ func (r *weaviateWrapper) unmarshalCodebaseRecordsResponse(res *models.GraphQLRe
 
 		filePath := getStringValue(obj, MetadataFilePath)
 		record := &types.CodebaseRecord{
-			Id:          getStringValue(additional, "id"),
-			FilePath:    filePath,
-			Language:    getStringValue(obj, MetadataLanguage),
-			Content:     getStringValue(obj, Content),
-			Range:       rangeInfo,
-			TokenCount:  int(getFloatValue(obj, MetadataTokenCount)),
-			LastUpdated: lastUpdated,
+			Id:           getStringValue(additional, "id"),
+			FilePath:     filePath,
+			Language:     getStringValue(obj, MetadataLanguage),
+			Content:      getStringValue(obj, Content),
+			Range:        rangeInfo,
+			TokenCount:   int(getFloatValue(obj, MetadataTokenCount)),
+			LastUpdated:  lastUpdated,
+			CodebaseId:   int32(getFloatValue(obj, MetadataCodebaseId)),
+			CodebasePath: getStringValue(obj, MetadataCodebasePath),
+			CodebaseName: getStringValue(obj, MetadataCodebaseName),
+			SyncId:       int32(getFloatValue(obj, MetadataSyncId)),
 		}
 
 		records = append(records, record)
 		uniquePaths[filePath]++
 
-		if i < 10 { // 只打印前10个记录避免日志过多
-			fmt.Printf("[DEBUG] 记录 %d: FilePath=%s, Language=%s, ID=%s\n", i+1, filePath, record.Language, record.Id)
-		}
-	}
-
-	fmt.Printf("[DEBUG] 解析完成，有效记录数: %d\n", len(records))
-	fmt.Printf("[DEBUG] 唯一文件路径数: %d\n", len(uniquePaths))
-	for path, count := range uniquePaths {
-		if count > 1 {
-			fmt.Printf("[DEBUG] 重复路径: %s (出现 %d 次)\n", path, count)
-		}
 	}
 
 	return records, nil
@@ -837,6 +794,7 @@ func (r *weaviateWrapper) unmarshalRecordsResponse(res *models.GraphQLResponse) 
 		codebaseId, _ := obj[MetadataCodebaseId].(float64)
 		codebasePath, _ := obj[MetadataCodebasePath].(string)
 		codebaseName, _ := obj[MetadataCodebaseName].(string)
+
 		syncId, _ := obj[MetadataSyncId].(float64)
 
 		record := &types.CodebaseRecord{
@@ -1021,8 +979,8 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 				MetadataFilePath:     c.FilePath,
 				MetadataLanguage:     c.Language,
 				MetadataCodebaseId:   c.CodebaseId,
-				MetadataCodebasePath: c.CodebasePath,
-				MetadataCodebaseName: c.CodebaseName,
+				MetadataCodebasePath: options.CodebasePath,
+				MetadataCodebaseName: options.CodebaseName,
 				MetadataSyncId:       options.SyncId,
 				MetadataRange:        c.Range,
 				MetadataTokenCount:   c.TokenCount,
