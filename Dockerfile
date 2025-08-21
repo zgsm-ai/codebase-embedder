@@ -22,7 +22,7 @@ RUN make build
 
 # 
 
-FROM alpine:3.21 AS runtime
+FROM alpine:3.21 AS STANDARD
 
 # FROM golang:1.24.4 AS STANDARD
 
