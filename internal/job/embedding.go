@@ -97,14 +97,38 @@ func (t *embeddingProcessor) Process(ctx context.Context) error {
 
 		// 使用基础结构的并发处理方法
 		if err := t.processFilesConcurrently(ctx, processFile, t.svcCtx.Config.IndexTask.EmbeddingTask.MaxConcurrency); err != nil {
+
+			if len(unsupportedFiles) > 0 {
+				tracer.WithTrace(ctx).Infof("updating %d unsupported files status", len(unsupportedFiles))
+				err := t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
+					func(status *types.FileStatusResponseData) {
+						status.Process = "completed"
+						status.TotalProgress = 100
+						for _, filePath := range unsupportedFiles {
+							for i, item := range status.FileList {
+								if item.Path == filePath {
+									status.FileList[i].Status = "unsupported"
+									tracer.WithTrace(ctx).Infof("marked file as unsupported: %s", filePath)
+									break
+								}
+							}
+						}
+					})
+				if err != nil {
+					tracer.WithTrace(ctx).Errorf("failed to update unsupported files status: %v", err)
+				}
+			}
 			return err
 		}
 
 		// 统一更新不支持的文件状态
 		if len(unsupportedFiles) > 0 {
 			tracer.WithTrace(ctx).Infof("updating %d unsupported files status", len(unsupportedFiles))
+			// 更新不支持的文件状态
 			err := t.svcCtx.StatusManager.UpdateFileStatus(ctx, t.params.RequestId,
 				func(status *types.FileStatusResponseData) {
+					status.Process = "completed"
+					status.TotalProgress = 100
 					for _, filePath := range unsupportedFiles {
 						for i, item := range status.FileList {
 							if item.Path == filePath {
