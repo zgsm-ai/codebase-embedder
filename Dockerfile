@@ -2,7 +2,7 @@ FROM golang:1.24.4 AS builder
 
 LABEL stage=gobuilder
 
-ENV CGO_ENABLED 1
+# ENV CGO_ENABLED 1
 
 ENV GOPROXY https://goproxy.cn,direct
 
@@ -12,13 +12,19 @@ WORKDIR /build
 
 COPY . .
 
+RUN go env -w CGO_ENABLED=0 && \
+    go env -w GO111MODULE=on && \
+    go env -w GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy,direct
+
 RUN make build
 
 # FROM alpine:latest
 
 # 
 
-FROM golang:1.24.4 AS STANDARD
+FROM alpine:3.21 AS runtime
+
+# FROM golang:1.24.4 AS STANDARD
 
 # RUN apk --no-cache add ca-certificates tzdata
 # RUN apk add --no-cache bash
