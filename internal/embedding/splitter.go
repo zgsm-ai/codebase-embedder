@@ -43,6 +43,10 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 		return nil, err
 	}
 
+	if language.Language == parser.Markdown && !p.splitOptions.EnableMarkdownParsing {
+		return nil, fmt.Errorf("mardownfile parse is close")
+	}
+
 	// 特殊处理 markdown 文件 - 只有在配置开启时才解析markdown
 	if language.Language == parser.Markdown && p.splitOptions.EnableMarkdownParsing {
 		return p.splitMarkdownFile(codeFile)
