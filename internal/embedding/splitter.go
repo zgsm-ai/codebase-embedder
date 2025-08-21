@@ -19,6 +19,7 @@ type CodeSplitter struct {
 type SplitOptions struct {
 	MaxTokensPerChunk          int
 	SlidingWindowOverlapTokens int
+	EnableMarkdownParsing      bool // 是否启用markdown文件解析
 }
 
 // NewCodeSplitter 创建代码分割器
@@ -42,8 +43,8 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 		return nil, err
 	}
 
-	// 特殊处理 markdown 文件
-	if language.Language == parser.Markdown {
+	// 特殊处理 markdown 文件 - 只有在配置开启时才解析markdown
+	if language.Language == parser.Markdown && p.splitOptions.EnableMarkdownParsing {
 		return p.splitMarkdownFile(codeFile)
 	}
 

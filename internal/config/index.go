@@ -19,8 +19,9 @@ type EmbeddingTaskConf struct {
 	Enabled        bool `json:",default=true"`
 	Timeout        time.Duration
 	// 滑动窗口重叠token数
-	OverlapTokens     int
-	MaxTokensPerChunk int
+	OverlapTokens         int
+	MaxTokensPerChunk     int
+	EnableMarkdownParsing bool `json:",default=false"` // 是否启用markdown文件解析
 }
 
 type GraphTaskConf struct {
