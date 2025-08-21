@@ -582,8 +582,18 @@ func (r *weaviateWrapper) DeleteByCodebase(ctx context.Context, clientId string,
 		return err
 	}
 
+	// 构建过滤器：根据 codebasePath 删除所有相关的 chunks
+	filter := filters.Where().
+		WithOperator(filters.And).
+		WithOperands([]*filters.WhereBuilder{
+			filters.Where().
+				WithPath([]string{MetadataCodebasePath}).
+				WithOperator(filters.Equal).
+				WithValueText(codebasePath),
+		})
+
 	do, err := r.client.Batch().ObjectsBatchDeleter().
-		WithTenant(tenant).WithClassName(r.className).Do(ctx)
+		WithTenant(tenant).WithWhere(filter).WithClassName(r.className).Do(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to send delete codebase chunks, err:%w", err)
 	}
