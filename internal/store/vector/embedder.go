@@ -93,12 +93,13 @@ func (e *customEmbedder) EmbedCodeChunks(ctx context.Context, chunks []*types.Co
 		}
 
 		// 执行嵌入
+		startTime := time.Now()
 		embeddings, err := e.doEmbeddings(ctx, batch)
+		duration := time.Since(startTime)
+		tracer.WithTrace(ctx).Infof("doEmbeddings execution time: %v", duration)
 		if err != nil {
 			tracer.WithTrace(ctx).Errorf("e.doEmbeddings(ctx, batch) filed: %v ", err)
-			// continue
 			break
-			// return nil, err
 		}
 
 		// 将嵌入结果与原始块关联

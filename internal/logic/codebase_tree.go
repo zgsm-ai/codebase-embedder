@@ -25,16 +25,11 @@ func NewCodebaseTreeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Code
 }
 
 func (l *CodebaseTreeLogic) GetCodebaseTree(req *types.CodebaseTreeRequest) (*types.CodebaseTreeResponse, error) {
-	log.Printf("[DEBUG] ===== GetCodebaseTree 开始执行 =====")
-	log.Printf("[DEBUG] 请求参数: ClientId=%s, CodebasePath=%s, CodebaseName=%s, MaxDepth=%v, IncludeFiles=%v",
-		req.ClientId, req.CodebasePath, req.CodebaseName, req.MaxDepth, req.IncludeFiles)
-
 	// 参数验证
 	if err := l.validateRequest(req); err != nil {
 		log.Printf("[DEBUG] 参数验证失败: %v", err)
 		return nil, errs.FileNotFound
 	}
-	log.Printf("[DEBUG] 参数验证通过")
 
 	// 构建目录树
 	log.Printf("[DEBUG] 开始构建目录树...")
@@ -46,11 +41,6 @@ func (l *CodebaseTreeLogic) GetCodebaseTree(req *types.CodebaseTreeRequest) (*ty
 
 	log.Printf("[DEBUG] 目录树构建完成，最终结果:")
 	if tree != nil {
-		log.Printf("[DEBUG]   根节点名称: %s", tree.Name)
-		log.Printf("[DEBUG]   根节点路径: %s", tree.Path)
-		log.Printf("[DEBUG]   根节点类型: %s", tree.Type)
-		log.Printf("[DEBUG]   根节点子节点数量: %d", len(tree.Children))
-
 		// 调用独立的树结构打印函数
 		l.printTreeStructure(tree)
 	} else {
@@ -97,9 +87,6 @@ func (l *CodebaseTreeLogic) printTreeStructure(tree *types.TreeNode) {
 }
 
 func (l *CodebaseTreeLogic) buildDirectoryTree(clientId string, req *types.CodebaseTreeRequest) (*types.TreeNode, error) {
-	log.Printf("[DEBUG] ===== buildDirectoryTree 开始执行 =====")
-	log.Printf("[DEBUG] 输入参数: clientId=%s, codebasePath=%s", clientId, req.CodebasePath)
-
 	// 从向量存储中获取文件路径
 	records, err := l.getRecordsFromVectorStore(clientId, req.CodebasePath)
 	if err != nil {
@@ -115,21 +102,10 @@ func (l *CodebaseTreeLogic) buildDirectoryTree(clientId string, req *types.Codeb
 	// 设置构建参数
 	maxDepth, includeFiles := l.buildTreeParameters(req)
 
-	// 构建目录树
-	log.Printf("[DEBUG] ===== 关键诊断点：开始构建目录树 =====")
-	log.Printf("[DEBUG] 输入到 BuildDirectoryTree 的参数:")
-	log.Printf("[DEBUG]   filePaths 数量: %d", len(filePaths))
-	log.Printf("[DEBUG]   maxDepth: %d", maxDepth)
-	log.Printf("[DEBUG]   includeFiles: %v", includeFiles)
-
 	result, err := BuildDirectoryTree(filePaths, maxDepth, includeFiles)
 	if err != nil {
-		log.Printf("[DEBUG] ❌ BuildDirectoryTree 执行失败: %v", err)
 		return nil, err
 	}
-
-	log.Printf("[DEBUG] ✅ BuildDirectoryTree 执行成功")
-	log.Printf("[DEBUG] ===== buildDirectoryTree 执行完成 =====")
 	return result, nil
 }
 
@@ -156,15 +132,8 @@ func (l *CodebaseTreeLogic) getRecordsFromVectorStore(clientId string, codebaseP
 		return nil, fmt.Errorf("查询文件路径失败: %w", err)
 	}
 
-	if len(records) == 0 {
-		l.logEmptyRecordsDiagnostic(clientId, codebasePath)
-	}
-
 	// 合并相同文件路径的记录
-	log.Printf("[DEBUG] 开始合并相同文件路径的记录...")
-	mergedRecords, mergeCount := l.mergeRecordsByFilePath(records)
-	log.Printf("[DEBUG] 合并完成：原始记录数=%d，合并后记录数=%d，合并了%d个重复路径",
-		len(records), len(mergedRecords), mergeCount)
+	mergedRecords, _ := l.mergeRecordsByFilePath(records)
 
 	return mergedRecords, nil
 }
@@ -235,55 +204,6 @@ func (l *CodebaseTreeLogic) mergeSingleFileRecords(records []*types.CodebaseReco
 	return mergedRecord
 }
 
-// logEmptyRecordsDiagnostic 记录空记录的诊断信息
-func (l *CodebaseTreeLogic) logEmptyRecordsDiagnostic(clientId string, codebasePath string) {
-	// 详细诊断：检查数据库和向量存储的连接状态
-	log.Printf("[DEBUG] ===== 深度诊断：数据库和向量存储状态检查 =====")
-
-	// 1. 检查数据库连接和记录
-	log.Printf("[DEBUG] 1. 数据库状态检查...")
-	allCodebases, err := l.svcCtx.Querier.Codebase.WithContext(l.ctx).Find()
-	if err != nil {
-		log.Printf("[DEBUG] ❌ 数据库查询失败: %v", err)
-	} else {
-		log.Printf("[DEBUG] ✅ 数据库连接正常，共找到 %d 个 codebase 记录:", len(allCodebases))
-		for i, cb := range allCodebases {
-			log.Printf("[DEBUG]   Codebase %d: ID=%d, ClientID='%s', Name='%s', ClientPath='%s', Status='%s'",
-				i+1, cb.ID, cb.ClientID, cb.Name, cb.ClientPath, cb.Status)
-		}
-	}
-
-	// 2. 检查向量存储连接
-	log.Printf("[DEBUG] 2. 向量存储状态检查...")
-	log.Printf("[DEBUG]   VectorStore 类型: %T", l.svcCtx.VectorStore)
-	log.Printf("[DEBUG]   VectorStore 是否为 nil: %v", l.svcCtx.VectorStore == nil)
-
-	// 3. 尝试直接查询向量存储中的所有记录
-	log.Printf("[DEBUG] 3. 尝试查询向量存储中的所有记录...")
-	if l.svcCtx.VectorStore != nil {
-		// 尝试使用一个空的 codebasePath 来获取所有记录
-		allRecords, err := l.svcCtx.VectorStore.GetCodebaseRecords(l.ctx, clientId, "")
-		if err != nil {
-			log.Printf("[DEBUG] ❌ 查询所有向量存储记录失败: %v", err)
-		} else {
-			log.Printf("[DEBUG] ✅ 向量存储中总共找到 %d 条记录", len(allRecords))
-			if len(allRecords) > 0 {
-				log.Printf("[DEBUG]   前5条记录示例:")
-				for i := 0; i < min(5, len(allRecords)); i++ {
-					log.Printf("[DEBUG]     记录 %d: FilePath='%s'", i+1, allRecords[i].FilePath)
-				}
-			}
-		}
-	}
-
-	// 4. 检查请求参数的详细情况
-	log.Printf("[DEBUG] 4. 请求参数详细分析:")
-	log.Printf("[DEBUG]   clientId: %s (类型: %T)", clientId, clientId)
-	log.Printf("[DEBUG]   req.CodebasePath: '%s' (长度: %d)", codebasePath, len(codebasePath))
-	log.Printf("[DEBUG]   req.CodebasePath 为空: %v", codebasePath == "")
-	log.Printf("[DEBUG]   req.CodebasePath 为 '.': %v", codebasePath == ".")
-}
-
 // analyzeRecordsAndExtractPaths 分析记录并提取文件路径
 func (l *CodebaseTreeLogic) analyzeRecordsAndExtractPaths(records []*types.CodebaseRecord) ([]string, error) {
 	if len(records) == 0 {
@@ -291,17 +211,9 @@ func (l *CodebaseTreeLogic) analyzeRecordsAndExtractPaths(records []*types.Codeb
 	}
 
 	// 提取文件路径
-	log.Printf("[DEBUG] ===== 关键诊断点：文件路径提取 =====")
 	var filePaths []string
-	for i, record := range records {
+	for _, record := range records {
 		filePaths = append(filePaths, record.FilePath)
-		if i < 10 { // 增加到前10个路径以便更好分析
-			log.Printf("[DEBUG] 文件路径 %d: %s", i+1, record.FilePath)
-		}
-	}
-
-	if len(records) > 10 {
-		log.Printf("[DEBUG] ... (还有 %d 个路径未显示)", len(records)-10)
 	}
 
 	// 添加调试：检查是否有重复的文件路径
@@ -309,9 +221,6 @@ func (l *CodebaseTreeLogic) analyzeRecordsAndExtractPaths(records []*types.Codeb
 	for _, path := range filePaths {
 		pathCount[path]++
 	}
-	log.Printf("[DEBUG] 文件路径统计:")
-	log.Printf("[DEBUG]   总文件路径数: %d", len(filePaths))
-	log.Printf("[DEBUG]   去重后路径数: %d", len(pathCount))
 
 	return filePaths, nil
 }
@@ -338,8 +247,6 @@ func (l *CodebaseTreeLogic) buildTreeParameters(req *types.CodebaseTreeRequest) 
 
 // BuildDirectoryTree 构建目录树
 func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*types.TreeNode, error) {
-	log.Printf("[DEBUG] ===== BuildDirectoryTree 开始执行 =====")
-	log.Printf("[DEBUG] 输入参数: filePaths数量=%d, maxDepth=%d, includeFiles=%v", len(filePaths), maxDepth, includeFiles)
 
 	if len(filePaths) == 0 {
 		log.Printf("[DEBUG] ❌ 文件路径列表为空，这是问题的直接原因！")
@@ -347,8 +254,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 	}
 
 	// 🔧 修复：在开始处理前对所有路径进行规范化
-	log.Printf("[DEBUG] 🔧 修复：对所有输入路径进行规范化处理...")
-	log.Printf("[DEBUG] 🔍 关键诊断：多级路径处理分析开始")
 	normalizedPaths := make([]string, len(filePaths))
 	for i, path := range filePaths {
 		normalizedPaths[i] = normalizePath(path)
@@ -370,22 +275,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		}
 	}
 
-	// 添加诊断日志：显示去重结果
-	log.Printf("[DEBUG] BuildDirectoryTree - 路径去重结果:")
-	log.Printf("[DEBUG]   规范化路径总数: %d", len(filePaths))
-	log.Printf("[DEBUG]   重复路径数: %d", duplicateCount)
-	log.Printf("[DEBUG]   去重后路径数: %d", len(uniquePaths))
-
-	log.Printf("[DEBUG] BuildDirectoryTree - 去重后的文件路径列表:")
-	for i, path := range uniquePaths {
-		if i < 10 { // 只显示前10个避免日志过多
-			log.Printf("[DEBUG]   唯一路径 %d: %s", i+1, path)
-		}
-		if i == 10 && len(uniquePaths) > 10 {
-			log.Printf("[DEBUG]   ... (还有 %d 个路径未显示)", len(uniquePaths)-10)
-		}
-	}
-
 	// 使用去重后的路径列表
 	filePaths = uniquePaths
 
@@ -394,9 +283,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 
 	// 🔧 修复：确保根路径也被规范化
 	rootPath = normalizePath(rootPath)
-
-	// 添加诊断日志：显示提取的根路径
-	log.Printf("[DEBUG] BuildDirectoryTree - 提取的根路径: '%s'", rootPath)
 
 	// 处理根路径为空的情况
 	if rootPath == "" {
@@ -413,9 +299,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		Children: make([]*types.TreeNode, 0),
 	}
 
-	// 添加诊断日志：显示根节点信息
-	log.Printf("[DEBUG] 创建根节点 - Name: '%s', Path: '%s'", root.Name, root.Path)
-
 	pathMap := make(map[string]*types.TreeNode)
 	pathMap[root.Path] = root
 
@@ -423,9 +306,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 	processedFiles := make(map[string]int)
 	skippedFiles := 0
 	processedFilesCount := 0
-
-	log.Printf("[DEBUG] 开始处理文件路径列表，总数: %d", len(filePaths))
-	log.Printf("[DEBUG] 配置参数 - includeFiles: %v, maxDepth: %d", includeFiles, maxDepth)
 
 	for _, filePath := range filePaths {
 		// 添加调试：跟踪每个文件路径的处理
@@ -446,7 +326,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 			if strings.HasPrefix(filePath, rootPath) {
 				// 原有逻辑：去掉根路径部分
 				relativePath = filePath[len(rootPath):]
-				log.Printf("[DEBUG] ✅ 使用原有逻辑计算相对路径")
 			} else {
 				// 🔧 修复：如果文件路径不以根路径开头，可能是路径规范化问题
 				// 尝试使用规范化后的路径进行比较
@@ -470,8 +349,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		}
 
 		currentDepth := strings.Count(relativePath, string(filepath.Separator))
-		log.Printf("[DEBUG] 深度计算 - FilePath: '%s', RootPath: '%s', RelativePath: '%s', Depth: %d",
-			filePath, rootPath, relativePath, currentDepth)
 
 		if maxDepth > 0 && currentDepth > maxDepth {
 			skippedFiles++
@@ -481,9 +358,6 @@ func BuildDirectoryTree(filePaths []string, maxDepth int, includeFiles bool) (*t
 		// 🔧 修复：确保所有路径都使用规范化格式
 		// 构建路径节点
 		dir := normalizePath(filepath.Dir(filePath))
-
-		// 添加诊断日志：显示文件路径分析
-		log.Printf("[DEBUG] ===== 数据流跟踪：文件路径处理 =====")
 
 		{
 			// 路径组件分析
@@ -601,7 +475,6 @@ func extractRootPath(filePaths []string) string {
 
 	// 使用改进的算法，考虑路径组件的匹配
 	commonPrefix := filePaths[0]
-	log.Printf("[DEBUG] 初始公共前缀（第一个路径）: '%s'", commonPrefix)
 
 	for _, path := range filePaths[1:] {
 		newPrefix := findCommonPrefix(commonPrefix, path)

@@ -93,6 +93,7 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 				allChunks = append(allChunks, subChunks...)
 			} else {
 				allChunks = append(allChunks, &types.CodeChunk{
+					Language:     "code",
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -210,6 +211,7 @@ func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *type
 		endColumn := calculateColumn(content[startByte:endByte+1], endByte-startByte)
 
 		chunks = append(chunks, &types.CodeChunk{
+			Language:     "code",
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -302,6 +304,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
+					Language:     "markdown",
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -320,6 +323,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 					tokenCount := p.countToken([]byte(chunkContent))
 
 					chunks = append(chunks, &types.CodeChunk{
+						Language:     "markdown",
 						CodebaseId:   codeFile.CodebaseId,
 						CodebasePath: codeFile.CodebasePath,
 						CodebaseName: codeFile.CodebaseName,
@@ -347,6 +351,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
+					Language:     "markdown",
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -386,6 +391,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 		tokenCount := p.countToken([]byte(chunkContent))
 
 		chunks = append(chunks, &types.CodeChunk{
+			Language:     "markdown",
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,

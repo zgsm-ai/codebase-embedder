@@ -50,7 +50,7 @@ func (l *FileRecordsLogic) GetFileRecords(req *types.FileRecordsRequest) (*types
 
 	// 构造响应
 	response := &types.FileRecordsResponse{
-		CodebasePath: req.ClientId,
+		CodebasePath: req.CodebasePath,
 		FilePath:     req.FilePath,
 		Records:      records,
 		TotalCount:   len(records),
