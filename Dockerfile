@@ -26,8 +26,8 @@ RUN make build
 
 FROM golang:1.24.4 AS STANDARD
 
-RUN apk --no-cache add ca-certificates tzdata
-RUN apk add --no-cache bash
+# RUN apk --no-cache add ca-certificates tzdata
+# RUN apk add --no-cache bash
 
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
