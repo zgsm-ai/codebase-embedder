@@ -987,6 +987,11 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 			properties[Content] = string(c.Content)
 		}
 
+		// 如果配置中启用了StoreSourceCode，则存储源码
+		if r.cfg.StoreSourceCode {
+			properties[Content] = string(c.Content)
+		}
+
 		objs[i] = &models.Object{
 			ID:         strfmt.UUID(uuid.New().String()),
 			Class:      r.className,
@@ -1091,9 +1096,9 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-
+	req.Header.Set("X-Costrict-Version", "v1.6.0")
 	if authorization != "" {
-		req.Header.Set("X-Costrict-Version", "v1.6.0")
+		req.Header.Set("authorization", authorization)
 	}
 
 	// 发送HTTP POST请求

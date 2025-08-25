@@ -13,6 +13,7 @@ type VectorStoreConf struct {
 	// 具体实现配置
 	Weaviate        WeaviateConf // Weaviate配置
 	FetchSourceCode bool         `json:",default=false"` // 是否获取源码
+	StoreSourceCode bool         `json:",default=false"` // 是否存储源码
 	BaseURL         string       `json:",optional"`      // 获取代码内容的基础URL
 }
 
