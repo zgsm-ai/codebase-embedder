@@ -982,11 +982,6 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 			Content:              "",
 		}
 
-		// 如果配置中启用了FetchSourceCode，则存储Content
-		if r.cfg.FetchSourceCode {
-			properties[Content] = string(c.Content)
-		}
-
 		// 如果配置中启用了StoreSourceCode，则存储源码
 		if r.cfg.StoreSourceCode {
 			properties[Content] = string(c.Content)
