@@ -968,22 +968,31 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 		if c.FilePath == types.EmptyString || c.CodebaseId == 0 || c.CodebasePath == types.EmptyString {
 			return fmt.Errorf("invalid chunk to write: required fields: CodebaseId, CodebasePath, FilePaths")
 		}
+
+		// 根据配置决定是否存储Content代码片段
+		properties := map[string]any{
+			MetadataFilePath:     c.FilePath,
+			MetadataLanguage:     c.Language,
+			MetadataCodebaseId:   c.CodebaseId,
+			MetadataCodebasePath: options.CodebasePath,
+			MetadataCodebaseName: options.CodebaseName,
+			MetadataSyncId:       options.SyncId,
+			MetadataRange:        c.Range,
+			MetadataTokenCount:   c.TokenCount,
+			Content:              "",
+		}
+
+		// 如果配置中启用了FetchSourceCode，则存储Content
+		if r.cfg.FetchSourceCode {
+			properties[Content] = string(c.Content)
+		}
+
 		objs[i] = &models.Object{
-			ID:     strfmt.UUID(uuid.New().String()),
-			Class:  r.className,
-			Tenant: tenantName,
-			Vector: c.Embedding,
-			Properties: map[string]any{
-				MetadataFilePath:     c.FilePath,
-				MetadataLanguage:     c.Language,
-				MetadataCodebaseId:   c.CodebaseId,
-				MetadataCodebasePath: options.CodebasePath,
-				MetadataCodebaseName: options.CodebaseName,
-				MetadataSyncId:       options.SyncId,
-				MetadataRange:        c.Range,
-				MetadataTokenCount:   c.TokenCount,
-				Content:              string(c.Content),
-			},
+			ID:         strfmt.UUID(uuid.New().String()),
+			Class:      r.className,
+			Tenant:     tenantName,
+			Vector:     c.Embedding,
+			Properties: properties,
 		}
 	}
 	tracer.WithTrace(ctx).Infof("start to save %d chunks for codebase %s successfully", len(docs), docs[0].CodebaseName)
@@ -1081,9 +1090,10 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 
 	if authorization != "" {
-		req.Header.Set("Authorization", authorization)
+		req.Header.Set("X-Costrict-Version", "v1.6.0")
 	}
 
 	// 发送HTTP POST请求

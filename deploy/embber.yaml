@@ -52,7 +52,7 @@ data:
       Type: weaviate
       Timeout: 60s
       MaxRetries: 5
-      FetchSourceCode: true
+      FetchSourceCode: false
       BaseURL: http://codebase-querier-svc.costrict:8888/codebase-indexer/api/v1/snippets/read
       Weaviate:
         MaxDocuments: 20
