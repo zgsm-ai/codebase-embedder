@@ -1095,7 +1095,6 @@ func fetchCodeContentsBatch(ctx context.Context, cfg config.VectorStoreConf, cli
 
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Costrict-Version", "v1.6.0")
 	if authorization != "" {
 		req.Header.Set("authorization", authorization)
