@@ -159,11 +159,12 @@ metadata:
   name: codebase-embedder-svc
   namespace: costrict
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
   - port: 8888
     targetPort: 8888
     name: http
+    nodePort: 32002
   - port: 6470
     targetPort: 6060
     name: metrics
