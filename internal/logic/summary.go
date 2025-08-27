@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -29,9 +30,16 @@ func NewSummaryLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SummaryLo
 	}
 }
 
-func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest) (*types.IndexSummaryResonseData, error) {
+func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization string) (*types.IndexSummaryResonseData, error) {
 
 	ctx := context.WithValue(l.ctx, tracer.Key, req.ClientId)
+
+	// 执行探活检查
+	healthCheckLogic := NewHealthCheckLogic(ctx, l.svcCtx)
+	if err := healthCheckLogic.CheckHealth(authorization, req); err != nil {
+		tracer.WithTrace(ctx).Errorf("health check failed: %v", err)
+		return nil, fmt.Errorf("health check failed: %w", err)
+	}
 
 	var (
 		wg                 sync.WaitGroup

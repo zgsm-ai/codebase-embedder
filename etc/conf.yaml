@@ -94,3 +94,9 @@ Validation:
 TokenLimit:
   max_running_tasks: 10
   enabled: true
+
+# 探活接口配置
+HealthCheck:
+  Enabled: true
+  URL: "http://localhost:9001/codebase-indexer/api/v1/index/summary"
+  Timeout: 3s
