@@ -8,6 +8,7 @@ import (
 var ErrFileExtNotFound = errors.New("file extension not found")
 var ErrLangConfNotFound = errors.New("langConf not found")
 var ErrQueryNotFound = errors.New("query not found")
+var ErrInvalidOpenAPISpec = errors.New("file does not conform to the OpenAPI specification")
 
 // Custom errors
 var (
@@ -29,5 +30,5 @@ func IsRealQueryErr(err error) bool {
 }
 
 func IsNotSupportedFileError(err error) bool {
-	return errors.Is(err, ErrFileExtNotFound) || errors.Is(err, ErrLangConfNotFound)
+	return errors.Is(err, ErrFileExtNotFound) || errors.Is(err, ErrLangConfNotFound) || errors.Is(err, ErrInvalidOpenAPISpec)
 }

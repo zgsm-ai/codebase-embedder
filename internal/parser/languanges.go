@@ -38,6 +38,8 @@ const (
 	Kotlin     Language = "kotlin"
 	Scala      Language = "scala"
 	Markdown   Language = "markdown"
+	OpenAPI    Language = "openapi"
+	Swagger    Language = "swagger"
 )
 
 // LanguageConfig holds the configuration for a language

@@ -1,10 +1,13 @@
 package embedding
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi2"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/tiktoken-go/tokenizer"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/zgsm-ai/codebase-indexer/internal/parser"
@@ -50,6 +53,9 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 	// 特殊处理 markdown 文件 - 只有在配置开启时才解析markdown
 	if language.Language == parser.Markdown && p.splitOptions.EnableMarkdownParsing {
 		return p.splitMarkdownFile(codeFile)
+	}
+	if language.Language == parser.OpenAPI || language.Language == parser.Swagger {
+		return p.splitOpenAPIFile(codeFile)
 	}
 
 	sitterParser := sitter.NewParser()
@@ -408,4 +414,250 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 	}
 
 	return chunks, nil
+}
+
+type APIVersion string
+
+const (
+	OpenAPI3 APIVersion = "openapi3"
+	Swagger2 APIVersion = "swagger2"
+	Unknown  APIVersion = "unknown"
+)
+// splitOpenAPIFile 将 OpenAPI 文件的Paths分割成多个新的OpenAPI文件
+func (p *CodeSplitter) splitOpenAPIFile(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
+	// 1. 验证 OpenAPI 规范版本
+	version, err := p.validateOpenAPISpec(codeFile.Content)
+	if err != nil {
+		return nil, parser.ErrInvalidOpenAPISpec
+	}
+
+	// 2. 根据版本解析文档
+	var chunks []*types.CodeChunk
+
+	switch version {
+	case OpenAPI3:
+		chunks, err = p.splitOpenAPI3File(codeFile)
+	case Swagger2:
+		chunks, err = p.splitSwagger2File(codeFile)
+	default:
+		return nil, parser.ErrInvalidOpenAPISpec
+	}
+	if err != nil {
+		return nil, parser.ErrInvalidOpenAPISpec
+	}
+
+	return chunks, nil
+}
+
+// validateOpenAPISpec 验证 OpenAPI 规范版本
+func (p *CodeSplitter) validateOpenAPISpec(data []byte) (APIVersion, error) {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Unknown, fmt.Errorf("不是合法的 JSON: %v", err)
+	}
+
+	switch {
+	case m["openapi"] != nil:
+		openapiVersion, ok := m["openapi"].(string)
+		if !ok {
+			return Unknown, fmt.Errorf("openapi版本字段格式错误")
+		}
+		if strings.HasPrefix(openapiVersion, "3") {
+			return OpenAPI3, nil
+		}
+		return Unknown, fmt.Errorf("不支持的 OpenAPI 版本: %s", openapiVersion)
+
+	case m["swagger"] != nil:
+		swaggerVersion, ok := m["swagger"].(string)
+		if !ok {
+			return Unknown, fmt.Errorf("swagger版本字段格式错误")
+		}
+		if strings.HasPrefix(swaggerVersion, "2") {
+			return Swagger2, nil
+		}
+		return Unknown, fmt.Errorf("不支持的 Swagger 版本: %s", swaggerVersion)
+
+	default:
+		return Unknown, fmt.Errorf("既不是 openapi 3.x 也不是 swagger 2.0")
+	}
+}
+
+// splitOpenAPI3File 分割 OpenAPI 3.x 文件
+func (p *CodeSplitter) splitOpenAPI3File(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
+	// 解析 OpenAPI 3.x 文档
+	loader := openapi3.NewLoader()
+	// TODO 是否处理外部引用呢
+	loader.IsExternalRefsAllowed = false   // 默认状态
+	doc, err := loader.LoadFromData(codeFile.Content)
+	if err != nil {
+		return nil, fmt.Errorf("openapi3 解析失败: %v", err)
+	}
+
+	if err := doc.Validate(loader.Context); err != nil {
+		return nil, fmt.Errorf("openapi3 验证失败: %v", err)
+	}
+
+	var chunks []*types.CodeChunk
+
+	// 为每个路径创建单独的文档
+	for _, path := range doc.Paths.InMatchingOrder() {
+		pathItem := doc.Paths.Find(path)
+
+		// 创建新的文档副本
+		newDoc := &openapi3.T{
+			OpenAPI:      doc.OpenAPI,
+			Info:         doc.Info,
+			Servers:      doc.Servers,
+			Paths:        openapi3.NewPaths(openapi3.WithPath(path, pathItem)),
+			Components:   doc.Components, // 保留所有组件
+			Security:     doc.Security,
+			Tags:         doc.Tags,
+			ExternalDocs: doc.ExternalDocs,
+		}
+
+		// 更新文档标题以包含路径信息
+		newDoc.Info.Title = fmt.Sprintf("%s - %s", doc.Info.Title, path)
+
+
+		// 序列化新的文档
+		docBytes, err := json.Marshal(newDoc)
+		if err != nil {
+			return nil, fmt.Errorf("序列化 OpenAPI 3.x 文档失败: %v", err)
+		}
+
+		// 计算 token 数量
+		tokenCount := p.countToken(docBytes)
+
+		// 创建代码块
+		chunk := &types.CodeChunk{
+			Language:     "doc",
+			CodebaseId:   codeFile.CodebaseId,
+			CodebasePath: codeFile.CodebasePath,
+			CodebaseName: codeFile.CodebaseName,
+			Content:      docBytes,
+			FilePath:     codeFile.Path,
+			Range:        []int{0, 0, 0, 0}, // OpenAPI 分割不涉及行号
+			TokenCount:   tokenCount,
+		}
+
+		chunks = append(chunks, chunk)
+	}
+
+	return chunks, nil
+}
+
+// splitSwagger2File 分割 Swagger 2.0 文件
+func (p *CodeSplitter) splitSwagger2File(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
+	// 解析 Swagger 2.0 文档
+	var doc openapi2.T
+	if err := json.Unmarshal(codeFile.Content, &doc); err != nil {
+		return nil, fmt.Errorf("swagger2 解析失败: %v", err)
+	}
+
+	// 验证 Swagger 2.0 文档
+	if err := p.validateSwagger2Doc(&doc); err != nil {
+		return nil, fmt.Errorf("swagger2 验证失败: %v", err)
+	}
+
+	var chunks []*types.CodeChunk
+
+	// 为每个路径创建单独的文档
+	for path, pathItem := range doc.Paths {
+		// 创建新的文档副本
+		newDoc := &openapi2.T{
+			Swagger:             doc.Swagger,
+			Info:                doc.Info,
+			Host:                doc.Host,
+			BasePath:            doc.BasePath,
+			Schemes:             doc.Schemes,
+			Consumes:            doc.Consumes,
+			Produces:            doc.Produces,
+			Paths:               make(map[string]*openapi2.PathItem),
+			Definitions:         doc.Definitions, // 保留所有定义
+			Parameters:          doc.Parameters,
+			Responses:           doc.Responses,
+			Security:            doc.Security,
+			SecurityDefinitions: doc.SecurityDefinitions,
+			Tags:                doc.Tags,
+			ExternalDocs:        doc.ExternalDocs,
+		}
+
+		// 只添加当前路径
+		newDoc.Paths[path] = pathItem
+		// 更新文档标题以包含路径信息
+		newDoc.Info.Title = fmt.Sprintf("%s - %s", doc.Info.Title, path)
+
+
+		// 序列化新的文档
+		docBytes, err := json.Marshal(newDoc)
+		if err != nil {
+			return nil, fmt.Errorf("序列化 Swagger 2.0 文档失败: %v", err)
+		}
+
+		// 计算 token 数量
+		tokenCount := p.countToken(docBytes)
+
+		// 创建代码块
+		chunk := &types.CodeChunk{
+			Language:     "doc",
+			CodebaseId:   codeFile.CodebaseId,
+			CodebasePath: codeFile.CodebasePath,
+			CodebaseName: codeFile.CodebaseName,
+			Content:      docBytes,
+			FilePath:     codeFile.Path,
+			Range:        []int{0, 0, 0, 0}, // Swagger 分割不涉及行号
+			TokenCount:   tokenCount,
+		}
+
+		chunks = append(chunks, chunk)
+	}
+
+	return chunks, nil
+}
+
+// validateSwagger2Doc 验证 Swagger 2.0 文档
+func (p *CodeSplitter) validateSwagger2Doc(doc *openapi2.T) error {
+	// 检查必要字段
+	if  doc.Info.Title == "" {
+		return fmt.Errorf("info.title 不能为空")
+	}
+	if doc.Info.Version == "" {
+		return fmt.Errorf("info.version 不能为空")
+	}
+
+	// 检查路径
+	if doc.Paths == nil {
+		return fmt.Errorf("缺少 paths 字段")
+	}
+	if len(doc.Paths) == 0 {
+		return fmt.Errorf("paths 不能为空")
+	}
+
+	// 检查每个路径的操作
+	for path, pathItem := range doc.Paths {
+		if pathItem == nil {
+			return fmt.Errorf("路径 %s 的 pathItem 不能为空", path)
+		}
+
+		// 检查是否有至少一个操作
+		hasOperation := pathItem.Get != nil || pathItem.Post != nil ||
+			pathItem.Put != nil || pathItem.Delete != nil ||
+			pathItem.Patch != nil || pathItem.Head != nil ||
+			pathItem.Options != nil
+
+		if !hasOperation {
+			return fmt.Errorf("路径 %s 必须包含至少一个操作", path)
+		}
+	}
+
+	// 检查定义
+	if doc.Definitions != nil {
+		for name, schema := range doc.Definitions {
+			if schema == nil {
+				return fmt.Errorf("定义 %s 不能为空", name)
+			}
+		}
+	}
+
+	return nil
 }

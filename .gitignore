@@ -31,3 +31,4 @@ bin/*
 docs/task.md
 cmd.sh
 testfiles
+.history
