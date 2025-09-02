@@ -15,32 +15,32 @@ import (
 )
 
 const (
-	minPositive = 1
-	defaultTopK = 5
-	paramQuery  = "query"
+	documentMinPositive = 1
+	documentDefaultTopK = 5
+	documentParamQuery  = "query"
 )
 
-type SemanticLogic struct {
+type DocumentLogic struct {
 	logx.Logger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
-func NewSemanticSearchLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SemanticLogic {
-	return &SemanticLogic{
+func NewDocumentSearchLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DocumentLogic {
+	return &DocumentLogic{
 		Logger: logx.WithContext(ctx),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
-func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest, authorization string) (resp *types.SemanticSearchResponseData, err error) {
+func (l *DocumentLogic) DocumentSearch(req *types.DocumentSearchRequest, authorization string) (resp *types.DocumentSearchResponseData, err error) {
 	topK := req.TopK
-	if topK < minPositive {
-		topK = defaultTopK
+	if topK < documentMinPositive {
+		topK = documentDefaultTopK
 	}
 	if utils.IsBlank(req.Query) {
-		return nil, errs.NewInvalidParamErr(paramQuery, req.Query)
+		return nil, errs.NewInvalidParamErr(documentParamQuery, req.Query)
 	}
 
 	// 预处理查询字符串
@@ -58,7 +58,7 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest, authori
 			CodebasePath:  req.CodebasePath,
 			CodebaseName:  "",
 			Authorization: authorization,
-			Language:      "code",
+			Language:      "doc",
 		})
 	if err != nil {
 		return nil, err
@@ -73,13 +73,13 @@ func (l *SemanticLogic) SemanticSearch(req *types.SemanticSearchRequest, authori
 		}
 	}
 
-	return &types.SemanticSearchResponseData{
+	return &types.DocumentSearchResponseData{
 		List: filteredDocuments,
 	}, nil
 }
 
 // preprocessQuery 执行自定义查询预处理逻辑
-func (l *SemanticLogic) preprocessQuery(query string) (string, error) {
+func (l *DocumentLogic) preprocessQuery(query string) (string, error) {
 	// TODO: 实现自定义预处理逻辑
 	// 例如: 去除特殊字符、敏感词过滤等
 	return query, nil

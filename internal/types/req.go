@@ -49,20 +49,19 @@ type RelationRequest struct {
 	MaxLayer       int    `form:"maxLayer,optional,default=1"` // 最大层级数（默认1）
 }
 
-
 type SemanticFileItem struct {
-	Content  string  `json:"content"`  // 代码片段
-	FilePath string  `json:"filePath"` // 文件相对路径
-	Score    float32 `json:"score"`    // 匹配得分
+	Content   string  `json:"content"`   // 代码片段
+	FilePath  string  `json:"filePath"`  // 文件相对路径
+	Score     float32 `json:"score"`     // 匹配得分
 	StartLine int     `json:"startLine"` // 代码片段起始行
 	EndLine   int     `json:"endLine"`   // 代码片段结束行
 }
 
 type SemanticSearchRequest struct {
-	ClientId     string  `json:"clientId"`                 // 用户机器ID（如MAC地址）
-	CodebasePath string  `json:"codebasePath"`             // 项目绝对路径
-	Query        string  `json:"query"`                    // 查询内容
-	TopK         int     `json:"topK,optional,default=10"` // 结果返回数量（默认10）
+	ClientId       string  `json:"clientId"`                            // 用户机器ID（如MAC地址）
+	CodebasePath   string  `json:"codebasePath"`                        // 项目绝对路径
+	Query          string  `json:"query"`                               // 查询内容
+	TopK           int     `json:"topK,optional,default=10"`            // 结果返回数量（默认10）
 	ScoreThreshold float32 `json:"scoreThreshold,optional,default=0.3"` // 分数阈值，默认0.3
 }
 
@@ -70,8 +69,17 @@ type SemanticSearchResponseData struct {
 	List []*SemanticFileItem `json:"list"` // 检索结果列表
 }
 
+type DocumentSearchRequest struct {
+	ClientId       string  `json:"clientId"`                            // 用户机器ID（如MAC地址）
+	CodebasePath   string  `json:"codebasePath"`                        // 项目绝对路径
+	Query          string  `json:"query"`                               // 查询内容
+	TopK           int     `json:"topK,optional,default=10"`            // 结果返回数量（默认10）
+	ScoreThreshold float32 `json:"scoreThreshold,optional,default=0.3"` // 分数阈值，默认0.3
+}
 
-
+type DocumentSearchResponseData struct {
+	List []*SemanticFileItem `json:"list"` // 检索结果列表
+}
 
 // ListOption 定义List方法的可选参数
 type ListOption func(*ListOptions)
@@ -100,16 +108,11 @@ type ReadOptions struct {
 	EndLine   int
 }
 
-
-
 type FileDefinitionParseRequest struct {
 	ClientId     string `form:"clientId"`     // 用户机器ID
 	CodebasePath string `form:"codebasePath"` // 项目绝对路径
 	FilePath     string `form:"filePath"`     // 文件相对路径
 }
-
-
-
 
 type DefinitionRequest struct {
 	ClientId     string `form:"clientId"`             // 用户机器ID
@@ -120,7 +123,6 @@ type DefinitionRequest struct {
 	CodeSnippet  string `form:"codeSnippet,optional"` // 代码片段
 }
 
-
 type DeleteCodebaseRequest struct {
 	ClientId     string `form:"clientId"`     // 用户机器ID（如MAC地址）
 	CodebasePath string `form:"codebasePath"` // 项目绝对路径
@@ -130,18 +132,18 @@ type DeleteCodebaseResponseData struct {
 }
 
 type DeleteIndexRequest struct {
-	ClientId     string `form:"clientId"`               // 用户机器ID（如MAC地址）
-	CodebasePath string `form:"codebasePath"`           // 项目绝对路径
-	FilePaths    string `form:"filePaths,optional"`     // 要删除的文件路径file1.js 如果不传则根据clientId、codebasePath 删除工程
+	ClientId     string `form:"clientId"`           // 用户机器ID（如MAC地址）
+	CodebasePath string `form:"codebasePath"`       // 项目绝对路径
+	FilePaths    string `form:"filePaths,optional"` // 要删除的文件路径file1.js 如果不传则根据clientId、codebasePath 删除工程
 }
 
 type DeleteIndexResponseData struct {
 }
 
 type EmbeddingSummary struct {
-	Status     string `json:"status"`
-	UpdatedAt  string `json:"updatedAt"`
-	TotalFiles int    `json:"totalFiles"`
+	Status      string `json:"status"`
+	UpdatedAt   string `json:"updatedAt"`
+	TotalFiles  int    `json:"totalFiles"`
 	TotalChunks int    `json:"totalChunks"`
 }
 
@@ -155,6 +157,16 @@ type IndexSummaryResonseData struct {
 	Embedding  EmbeddingSummary `json:"embedding"`
 }
 
+type DocumentsSummaryRequest struct {
+	ClientId     string `form:"clientId"`     // 客户端id
+	CodebasePath string `form:"codebasePath"` // 项目绝对路径
+}
+
+type DocumentsSummaryResponseData struct {
+	TotalFiles int
+	Embedding  EmbeddingSummary `json:"embedding"`
+}
+
 type IndexTaskRequest struct {
 	ClientId      string `json:"clientId"`               // 客户端唯一标识（如MAC地址）
 	CodebasePath  string `json:"codebasePath"`           // 项目绝对路径
@@ -162,7 +174,7 @@ type IndexTaskRequest struct {
 	UploadToken   string `json:"uploadToken,optional"`   // 上传令牌
 	ExtraMetadata string `json:"extraMetadata,optional"` // 额外元数据（JSON字符串）
 	FileTotals    int    `json:"fileTotals"`             // 上传工程文件总数
-    RequestId     string `json:"requestId,optional"`     // 请求ID，用于跟踪和调试
+	RequestId     string `json:"requestId,optional"`     // 请求ID，用于跟踪和调试
 }
 
 type IndexTaskResponseData struct {
@@ -187,20 +199,20 @@ type GetAllVectorsSummaryRequest struct {
 
 // VectorSummaryItem 单个代码库的向量汇总信息
 type VectorSummaryItem struct {
-	ClientId     string            `json:"clientId"`     // 客户端ID
-	CodebasePath string            `json:"codebasePath"` // 项目路径
-	CodebaseName string            `json:"codebaseName"` // 项目名称
-	TotalFiles   int               `json:"totalFiles"`   // 总文件数
-	Embedding    EmbeddingSummary  `json:"embedding"`    // 向量汇总信息
-	CreatedAt    string            `json:"createdAt"`    // 创建时间
-	UpdatedAt    string            `json:"updatedAt"`    // 更新时间
+	ClientId     string           `json:"clientId"`     // 客户端ID
+	CodebasePath string           `json:"codebasePath"` // 项目路径
+	CodebaseName string           `json:"codebaseName"` // 项目名称
+	TotalFiles   int              `json:"totalFiles"`   // 总文件数
+	Embedding    EmbeddingSummary `json:"embedding"`    // 向量汇总信息
+	CreatedAt    string           `json:"createdAt"`    // 创建时间
+	UpdatedAt    string           `json:"updatedAt"`    // 更新时间
 }
 
 // GetAllVectorsSummaryResponseData 获取所有向量信息汇总的响应
 type GetAllVectorsSummaryResponseData struct {
-	TotalCount    int                 `json:"totalCount"`    // 总代码库数量
+	TotalCount    int                  `json:"totalCount"`    // 总代码库数量
 	Items         []*VectorSummaryItem `json:"items"`         // 代码库向量信息列表
-	TaskPoolState *TaskPoolState      `json:"taskPoolState"` // 任务池状态
+	TaskPoolState *TaskPoolState       `json:"taskPoolState"` // 任务池状态
 }
 
 // TaskPoolState 任务池状态
@@ -211,10 +223,10 @@ type TaskPoolState struct {
 
 // UpdateEmbeddingPathRequest 更新嵌入路径的请求
 type UpdateEmbeddingPathRequest struct {
-	ClientId      string `json:"clientId"`               // 客户端唯一标识
-	CodebasePath  string `json:"codebasePath"`           // 项目绝对路径
-	OldPath       string `json:"oldPath"`                // 旧路径（文件或目录）
-	NewPath       string `json:"newPath"`                // 新路径（文件或目录）
+	ClientId     string `json:"clientId"`     // 客户端唯一标识
+	CodebasePath string `json:"codebasePath"` // 项目绝对路径
+	OldPath      string `json:"oldPath"`      // 旧路径（文件或目录）
+	NewPath      string `json:"newPath"`      // 新路径（文件或目录）
 }
 
 // UpdateEmbeddingPathResponseData 更新嵌入路径的响应
@@ -232,7 +244,7 @@ type FileRecordsRequest struct {
 
 // FileRecordsResponse 获取文件记录的响应
 type FileRecordsResponse struct {
-	ClientId   string            `json:"clientId"`   // 代码库ID
+	ClientId     string           `json:"clientId"`     // 代码库ID
 	CodebasePath string           `json:"codebasePath"` // 项目绝对路径
 	FilePath     string           `json:"filePath"`     // 文件相对路径
 	Records      []CodebaseRecord `json:"records"`      // 文件记录列表
@@ -248,9 +260,9 @@ type DictionaryRecordsRequest struct {
 
 // DictionaryRecordsResponse 获取目录记录的响应
 type DictionaryRecordsResponse struct {
-	ClientId     string            `json:"clientId"`     // 客户端ID
-	CodebasePath string            `json:"codebasePath"` // 项目绝对路径
-	Dictionary   string            `json:"dictionary"`   // 目录相对路径
-	Records      []CodebaseRecord  `json:"records"`      // 目录记录列表
-	TotalCount   int               `json:"totalCount"`   // 记录总数
+	ClientId     string           `json:"clientId"`     // 客户端ID
+	CodebasePath string           `json:"codebasePath"` // 项目绝对路径
+	Dictionary   string           `json:"dictionary"`   // 目录相对路径
+	Records      []CodebaseRecord `json:"records"`      // 目录记录列表
+	TotalCount   int              `json:"totalCount"`   // 记录总数
 }

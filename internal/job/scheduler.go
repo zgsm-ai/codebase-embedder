@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
 )
 
@@ -11,9 +12,6 @@ type Scheduler struct {
 
 func NewScheduler(serverCtx context.Context, svcCtx *svc.ServiceContext) (*Scheduler, error) {
 	cleaner, err := NewCleaner(serverCtx, svcCtx)
-	if err != nil {
-		return nil, err
-	}
 	if err != nil {
 		return nil, err
 	}

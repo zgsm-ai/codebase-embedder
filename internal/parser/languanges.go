@@ -152,6 +152,7 @@ var languageConfigs = []*LanguageConfig{
 		SitterLanguage: func() *sitter.Language {
 			// Markdown 没有对应的 tree-sitter 解析器，返回 nil
 			return nil
+			// return sitter.NewLanguage(sittermarkdown.Language())
 		},
 		SupportedExts: []string{".md"},
 	},

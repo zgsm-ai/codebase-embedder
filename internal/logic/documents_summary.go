@@ -3,7 +3,6 @@ package logic
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -16,37 +15,29 @@ import (
 	"github.com/zeromicro/go-zero/core/logx"
 )
 
-type SummaryLogic struct {
+type DocumentsSummaryLogic struct {
 	logx.Logger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
-func NewSummaryLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SummaryLogic {
-	return &SummaryLogic{
+func NewDocumentsSummaryLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DocumentsSummaryLogic {
+	return &DocumentsSummaryLogic{
 		Logger: logx.WithContext(ctx),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
-func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization string) (*types.IndexSummaryResonseData, error) {
-
-	ctx := context.WithValue(l.ctx, tracer.Key, req.ClientId)
-
-	// 执行探活检查
-	healthCheckLogic := NewHealthCheckLogic(ctx, l.svcCtx)
-	if err := healthCheckLogic.CheckHealth(authorization, req); err != nil {
-		tracer.WithTrace(ctx).Errorf("health check failed: %v", err)
-		return nil, fmt.Errorf("health check failed: %w", err)
-	}
-
+func (l *DocumentsSummaryLogic) DocumentsSummary(req *types.DocumentsSummaryRequest) (*types.DocumentsSummaryResponseData, error) {
 	var (
 		wg                 sync.WaitGroup
 		embeddingSummary   *types.EmbeddingSummary
 		embeddingIndexTask *model.IndexHistory
 		embeddingErr       error
 	)
+
+	ctx := context.WithValue(l.ctx, tracer.Key, req.ClientId)
 
 	// 定义超时时间
 	timeout := 5 * time.Second
@@ -59,7 +50,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization str
 		defer cancel() // 避免资源泄漏
 
 		var err error
-		embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummaryWithLanguage(timeoutCtx, req.ClientId, req.CodebasePath, "code")
+		embeddingSummary, err = l.svcCtx.VectorStore.GetIndexSummaryWithLanguage(timeoutCtx, req.ClientId, req.CodebasePath, "doc")
 		if err != nil {
 			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
 				tracer.WithTrace(ctx).Errorf("embedding summary query timed out after %v", timeout)
@@ -80,7 +71,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization str
 		return nil, embeddingErr
 	}
 
-	resp := &types.IndexSummaryResonseData{
+	resp := &types.DocumentsSummaryResponseData{
 		TotalFiles: 0,
 		Embedding: types.EmbeddingSummary{
 			Status: types.TaskStatusPending,
@@ -88,7 +79,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization str
 	}
 
 	if embeddingIndexTask != nil {
-		resp.Embedding.Status = convertStatus(embeddingIndexTask.Status)
+		resp.Embedding.Status = convertDocumentsStatus(embeddingIndexTask.Status)
 		resp.Embedding.UpdatedAt = embeddingIndexTask.UpdatedAt.Format("2006-01-02 15:04:05")
 	} else if embeddingSummary.TotalChunks > 0 {
 		resp.Embedding.Status = types.TaskStatusSuccess
@@ -103,7 +94,7 @@ func (l *SummaryLogic) Summary(req *types.IndexSummaryRequest, authorization str
 	return resp, nil
 }
 
-func convertStatus(status string) string {
+func convertDocumentsStatus(status string) string {
 	var embeddingStatus string
 	switch status {
 	case types.TaskStatusSuccess:

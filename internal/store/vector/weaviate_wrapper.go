@@ -151,6 +151,57 @@ func (r *weaviateWrapper) GetIndexSummary(ctx context.Context, clientId string, 
 	return summary, nil
 }
 
+func (r *weaviateWrapper) GetIndexSummaryWithLanguage(ctx context.Context, clientId string, codebasePath string, language string) (*types.EmbeddingSummary, error) {
+	start := time.Now()
+	// 使用 codebaseId 作为 clientId
+	tenantName, err := r.generateTenantName(clientId, codebasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tenant name: %w", err)
+	}
+
+	// Define GraphQL fields using proper Field type
+	fields := []graphql.Field{
+		{Name: "meta", Fields: []graphql.Field{
+			{Name: "count"},
+		}},
+		{Name: "groupedBy", Fields: []graphql.Field{
+			{Name: "path"},
+			{Name: "value"},
+		}},
+	}
+
+	// 创建基础聚合查询
+	aggregateBuilder := r.client.GraphQL().Aggregate().
+		WithClassName(r.className).
+		WithFields(fields...).
+		WithGroupBy(MetadataFilePath).
+		WithTenant(tenantName)
+
+	// 如果指定了语言过滤条件，则添加Where过滤器
+	if language != "" {
+		whereFilter := filters.Where().
+			WithPath([]string{MetadataLanguage}). // MetadataLanguage = "language"
+			WithOperator(filters.Equal).
+			WithValueText(language)
+
+		aggregateBuilder = aggregateBuilder.WithWhere(whereFilter)
+	}
+
+	res, err := aggregateBuilder.Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get index summary with language: %w", err)
+	}
+
+	summary, err := r.unmarshalSummarySearchResponse(res)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal summary response: %w", err)
+	}
+	tracer.WithTrace(ctx).Infof("embedding getIndexSummaryWithLanguage end, cost %d ms on total %d files %d chunks with language filter: %s",
+		time.Since(start).Milliseconds(), summary.TotalFiles, summary.TotalChunks, language)
+	return summary, nil
+}
+
 func (r *weaviateWrapper) DeleteCodeChunks(ctx context.Context, chunks []*types.CodeChunk, options Options) error {
 	if len(chunks) == 0 {
 		return nil // Nothing to delete
@@ -227,13 +278,25 @@ func (r *weaviateWrapper) SimilaritySearch(ctx context.Context, query string, nu
 	nearVector := r.client.GraphQL().NearVectorArgBuilder().
 		WithVector(embedQuery)
 
-	res, err := r.client.GraphQL().Get().
+	// 创建基础查询
+	queryBuilder := r.client.GraphQL().Get().
 		WithClassName(r.className).
 		WithFields(fields...).
 		WithNearVector(nearVector).
 		WithLimit(numDocuments).
-		WithTenant(tenantName).
-		Do(ctx)
+		WithTenant(tenantName)
+
+	// 如果指定了语言过滤条件，则添加Where过滤器
+	if options.Language != "" {
+		whereFilter := filters.Where().
+			WithPath([]string{MetadataLanguage}). // MetadataLanguage = "language"
+			WithOperator(filters.Equal).
+			WithValueText(options.Language)
+
+		queryBuilder = queryBuilder.WithWhere(whereFilter)
+	}
+
+	res, err := queryBuilder.Do(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute similarity search: %w", err)

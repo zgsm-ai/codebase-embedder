@@ -309,7 +309,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "markdown",
+					Language:     "doc",
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -328,7 +328,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 					tokenCount := p.countToken([]byte(chunkContent))
 
 					chunks = append(chunks, &types.CodeChunk{
-						Language:     "markdown",
+						Language:     "doc",
 						CodebaseId:   codeFile.CodebaseId,
 						CodebasePath: codeFile.CodebasePath,
 						CodebaseName: codeFile.CodebaseName,
@@ -356,7 +356,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "markdown",
+					Language:     "doc",
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -396,7 +396,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 		tokenCount := p.countToken([]byte(chunkContent))
 
 		chunks = append(chunks, &types.CodeChunk{
-			Language:     "markdown",
+			Language:     "doc",
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,

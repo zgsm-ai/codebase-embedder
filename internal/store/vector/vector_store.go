@@ -14,6 +14,7 @@ import (
 type Store interface {
 	DeleteByCodebase(ctx context.Context, clientId string, codebasePath string) error
 	GetIndexSummary(ctx context.Context, clientId string, codebasePath string) (*types.EmbeddingSummary, error)
+	GetIndexSummaryWithLanguage(ctx context.Context, clientId string, codebasePath string, language string) (*types.EmbeddingSummary, error)
 	GetCodebaseRecords(ctx context.Context, clientId string, codebasePath string) ([]*types.CodebaseRecord, error)
 	GetFileRecords(ctx context.Context, clientId string, codebasePath string, filePath string) ([]*types.CodebaseRecord, error)
 	GetDictionaryRecords(ctx context.Context, clientId string, codebasePath string, dictionary string) ([]*types.CodebaseRecord, error)
@@ -38,6 +39,7 @@ type Options struct {
 	TotalFiles    int
 	ClientId      string
 	Authorization string
+	Language      string
 }
 
 func NewVectorStore(cfg config.VectorStoreConf, embedder Embedder, reranker Reranker) (Store, error) {
