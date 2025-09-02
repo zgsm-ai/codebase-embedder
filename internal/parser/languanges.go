@@ -154,7 +154,7 @@ var languageConfigs = []*LanguageConfig{
 			return nil
 			// return sitter.NewLanguage(sittermarkdown.Language())
 		},
-		SupportedExts: []string{".md"},
+		SupportedExts: []string{".md", ".mdx"},
 	},
 }
 
