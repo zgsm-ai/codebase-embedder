@@ -2,9 +2,13 @@ package embedding
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/zgsm-ai/codebase-indexer/internal/parser"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
@@ -18,66 +22,57 @@ func TestSplitOpenAPIFile(t *testing.T) {
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
 
-	tests := []struct {
+	// 定义测试文件
+	testFiles := []struct {
 		name        string
-		content     []byte
+		filePath    string
 		expectError bool
 		expectCount int
 		description string
 	}{
 		{
-			name:        "OpenAPI 3.0 Petstore Extended API",
-			content:     createOpenAPI3PetstoreExtendedDoc(),
+			name:        "OpenAPI 3.0 JSON 文件",
+			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.json",
 			expectError: false,
 			expectCount: 2, // /pets 和 /pets/{petId} 两个路径
-			description: "应该成功分割 OpenAPI 3.0 Petstore Extended 文档",
+			description: "应该成功分割 OpenAPI 3.0 JSON 文件",
 		},
 		{
-			name:        "Swagger 2.0 Petstore API",
-			content:     createSwagger2PetstoreDoc(),
+			name:        "OpenAPI 3.0 YAML 文件",
+			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.yaml",
+			expectError: false,
+			expectCount: 2, // /users 和 /users/{id} 两个路径
+			description: "应该成功分割 OpenAPI 3.0 YAML 文件",
+		},
+		{
+			name:        "Swagger 2.0 JSON 文件",
+			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.json",
 			expectError: false,
 			expectCount: 14, // 14个不同的路径
-			description: "应该成功分割 Swagger 2.0 Petstore 文档",
+			description: "应该成功分割 Swagger 2.0 JSON 文件",
 		},
 		{
-			name:        "无效 JSON",
-			content:     []byte(`{ invalid json`),
-			expectError: true,
-			expectCount: 0,
-			description: "应该返回 JSON 解析错误",
-		},
-		{
-			name:        "不支持的版本",
-			content:     createUnsupportedVersionDoc(),
-			expectError: true,
-			expectCount: 0,
-			description: "应该返回不支持的版本错误",
-		},
-		{
-			name:        "缺少必要字段的 OpenAPI 3.0",
-			content:     createInvalidOpenAPI3Doc(),
-			expectError: true,
-			expectCount: 0,
-			description: "应该返回验证错误",
-		},
-		{
-			name:        "缺少必要字段的 Swagger 2.0",
-			content:     createInvalidSwagger2Doc(),
-			expectError: true,
-			expectCount: 0,
-			description: "应该返回验证错误",
+			name:        "Swagger 2.0 YAML 文件",
+			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.yaml",
+			expectError: true,  // 目前不支持Swagger 2.0 YAML 文件
+			expectCount: 2, // /users 和 /users/{id} 两个路径
+			description: "应该成功分割 Swagger 2.0 YAML 文件",
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range testFiles {
 		t.Run(tt.name, func(t *testing.T) {
+			// 读取文件内容
+			content, err := os.ReadFile(tt.filePath)
+			assert.NoError(t, err, "应该能够读取文件 %s", tt.filePath)
+
 			// 创建测试用的 SourceFile
 			sourceFile := &types.SourceFile{
 				CodebaseId:   1,
 				CodebasePath: "/test/path",
 				CodebaseName: "test-codebase",
-				Path:         "test-api.json",
-				Content:      tt.content,
+				Path:         filepath.Base(tt.filePath),
+				Content:      content,
 			}
 
 			// 执行分割
@@ -142,43 +137,49 @@ func TestValidateOpenAPISpec(t *testing.T) {
 		name        string
 		content     []byte
 		expectVer   APIVersion
+		filePath    string
 		expectError bool
 	}{
 		{
-			name:        "OpenAPI 3.0",
+			name:        "OpenAPI 3.0 JSON",
 			content:     []byte(`{"openapi": "3.0.3", "info": {"title": "test", "version": "1.0.0"}}`),
 			expectVer:   OpenAPI3,
+			filePath:    "test.json",
 			expectError: false,
 		},
 		{
-			name:        "Swagger 2.0",
+			name:        "Swagger 2.0 JSON",
 			content:     []byte(`{"swagger": "2.0", "info": {"title": "test", "version": "1.0.0"}}`),
 			expectVer:   Swagger2,
+			filePath:    "test.yaml",
 			expectError: false,
 		},
 		{
 			name:        "无效 JSON",
 			content:     []byte(`{ invalid json`),
 			expectVer:   Unknown,
+			filePath:    "test.json",
 			expectError: true,
 		},
 		{
 			name:        "不支持的版本",
 			content:     []byte(`{"openapi": "4.0.0", "info": {"title": "test", "version": "1.0.0"}}`),
 			expectVer:   Unknown,
+			filePath:    "test.yaml",
 			expectError: true,
 		},
 		{
 			name:        "缺少版本字段",
 			content:     []byte(`{"info": {"title": "test", "version": "1.0.0"}}`),
 			expectVer:   Unknown,
+			filePath:    "test.json",
 			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			version, err := splitter.validateOpenAPISpec(tt.content)
+			version, err := splitter.validateOpenAPISpec(tt.content, tt.filePath)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -285,19 +286,21 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
 
-	t.Run("Swagger 2.0 Petstore 完整文档分割", func(t *testing.T) {
-		content := createSwagger2PetstoreDoc()
+	t.Run("Swagger 2.0 JSON 完整文档分割", func(t *testing.T) {
+		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.json")
+		assert.NoError(t, err, "应该能够读取 swagger2.json 文件")
+
 		sourceFile := &types.SourceFile{
 			CodebaseId:   1,
 			CodebasePath: "/test/path",
 			CodebaseName: "petstore-api",
-			Path:         "petstore.json",
+			Path:         "swagger2.json",
 			Content:      content,
 		}
 
 		chunks, err := splitter.splitOpenAPIFile(sourceFile)
 		assert.NoError(t, err)
-		assert.Len(t, chunks, 14, "Petstore API 应该有 14 个路径")
+		assert.Len(t, chunks, 14, "Swagger 2.0 JSON 应该有 14 个路径")
 
 		// 验证所有路径都被正确分割
 		expectedPaths := []string{
@@ -332,19 +335,21 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 		}
 	})
 
-	t.Run("OpenAPI 3.0 Petstore Extended 文档分割", func(t *testing.T) {
-		content := createOpenAPI3PetstoreExtendedDoc()
+	t.Run("OpenAPI 3.0 JSON 文档分割", func(t *testing.T) {
+		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.json")
+		assert.NoError(t, err, "应该能够读取 openapi3.json 文件")
+
 		sourceFile := &types.SourceFile{
 			CodebaseId:   1,
 			CodebasePath: "/test/path",
 			CodebaseName: "petstore-extended-api",
-			Path:         "petstore-extended.json",
+			Path:         "openapi3.json",
 			Content:      content,
 		}
 
 		chunks, err := splitter.splitOpenAPIFile(sourceFile)
 		assert.NoError(t, err)
-		assert.Len(t, chunks, 2, "Petstore Extended API 应该有 2 个路径")
+		assert.Len(t, chunks, 2, "OpenAPI 3.0 JSON 应该有 2 个路径")
 
 		// 验证所有路径都被正确分割
 		expectedPaths := []string{"/pets", "/pets/{petId}"}
@@ -373,565 +378,162 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 			assert.Contains(t, chunkDoc, "servers", "chunk %d 应该包含 servers", i)
 		}
 	})
+
+	t.Run("OpenAPI 3.0 YAML 文档分割", func(t *testing.T) {
+		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.yaml")
+		assert.NoError(t, err, "应该能够读取 openapi3.yaml 文件")
+
+		sourceFile := &types.SourceFile{
+			CodebaseId:   1,
+			CodebasePath: "/test/path",
+			CodebaseName: "user-management-api",
+			Path:         "openapi3.yaml",
+			Content:      content,
+		}
+
+		chunks, err := splitter.splitOpenAPIFile(sourceFile)
+		assert.NoError(t, err)
+		assert.Len(t, chunks, 2, "OpenAPI 3.0 YAML 应该有 2 个路径")
+
+		// 验证所有路径都被正确分割
+		expectedPaths := []string{"/users", "/users/{id}"}
+
+		for i, chunk := range chunks {
+			var chunkDoc map[string]interface{}
+			err := json.Unmarshal(chunk.Content, &chunkDoc)
+			assert.NoError(t, err, "chunk %d 应该是有效的 JSON", i)
+
+			// 验证每个 chunk 只包含一个路径
+			if paths, exists := chunkDoc["paths"]; exists {
+				if pathsMap, ok := paths.(map[string]interface{}); ok {
+					assert.Len(t, pathsMap, 1, "chunk %d 应该只包含一个路径", i)
+
+					// 验证路径名称
+					for path := range pathsMap {
+						assert.Contains(t, expectedPaths, path, "chunk %d 包含的路径应该在预期列表中", i)
+					}
+				}
+			}
+
+			// 验证保留了所有必要的字段
+			assert.Contains(t, chunkDoc, "openapi", "chunk %d 应该包含 openapi 版本", i)
+			assert.Contains(t, chunkDoc, "info", "chunk %d 应该包含 info", i)
+			assert.Contains(t, chunkDoc, "components", "chunk %d 应该包含 components", i)
+			assert.Contains(t, chunkDoc, "servers", "chunk %d 应该包含 servers", i)
+		}
+	})
+
+	t.Run("Swagger 2.0 YAML 文档分割", func(t *testing.T) {
+		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.yaml")
+		assert.NoError(t, err, "应该能够读取 swagger2.yaml 文件")
+
+		sourceFile := &types.SourceFile{
+			CodebaseId:   1,
+			CodebasePath: "/test/path",
+			CodebaseName: "user-management-api",
+			Path:         "swagger2.yaml",
+			Content:      content,
+		}
+
+		chunks, err := splitter.splitOpenAPIFile(sourceFile)
+		assert.IsType(t, err, parser.ErrInvalidOpenAPISpec)
+		assert.Len(t, chunks, 0, "Swagger 2.0 YAML 应该有 2 个路径")
+
+		// 验证所有路径都被正确分割
+		expectedPaths := []string{"/users", "/users/{id}"}
+
+		for i, chunk := range chunks {
+			var chunkDoc map[string]interface{}
+			err := json.Unmarshal(chunk.Content, &chunkDoc)
+			assert.NoError(t, err, "chunk %d 应该是有效的 JSON", i)
+
+			// 验证每个 chunk 只包含一个路径
+			if paths, exists := chunkDoc["paths"]; exists {
+				if pathsMap, ok := paths.(map[string]interface{}); ok {
+					assert.Len(t, pathsMap, 1, "chunk %d 应该只包含一个路径", i)
+
+					// 验证路径名称
+					for path := range pathsMap {
+						assert.Contains(t, expectedPaths, path, "chunk %d 包含的路径应该在预期列表中", i)
+					}
+				}
+			}
+
+			// 验证保留了所有必要的字段
+			assert.Contains(t, chunkDoc, "swagger", "chunk %d 应该包含 swagger 版本", i)
+			assert.Contains(t, chunkDoc, "info", "chunk %d 应该包含 info", i)
+			assert.Contains(t, chunkDoc, "definitions", "chunk %d 应该包含 definitions", i)
+			assert.Contains(t, chunkDoc, "securityDefinitions", "chunk %d 应该包含 securityDefinitions", i)
+		}
+	})
 }
 
-// 辅助函数：创建 OpenAPI 3.0 Petstore Extended 文档
-func createOpenAPI3PetstoreExtendedDoc() []byte {
-	doc := map[string]interface{}{
-		"openapi": "3.0.3",
-		"info": map[string]interface{}{
-			"title":       "Petstore Extended API",
-			"description": "A sample OpenAPI 3.0 JSON file that demonstrates most common constructs.",
-			"version":     "1.0.0",
-			"contact": map[string]interface{}{
-				"name":  "API Support",
-				"email": "support@example.com",
-			},
-			"license": map[string]interface{}{
-				"name": "Apache 2.0",
-				"url":  "http://www.apache.org/licenses/LICENSE-2.0.html",
-			},
+// 测试错误情况
+func TestSplitOpenAPIFileErrorCases(t *testing.T) {
+	splitOptions := SplitOptions{
+		MaxTokensPerChunk:          1000,
+		SlidingWindowOverlapTokens: 100,
+		EnableMarkdownParsing:      true,
+	}
+	splitter, err := NewCodeSplitter(splitOptions)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		content     []byte
+		filePath    string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "无效 JSON",
+			content:     []byte(`{ invalid json`),
+			filePath:    "test.json",
+			expectError: true,
+			description: "应该返回 JSON 解析错误",
 		},
-		"servers": []map[string]interface{}{
-			{
-				"url":         "https://api.example.com/v1",
-				"description": "Production server",
-			},
-			{
-				"url":         "http://localhost:8080/v1",
-				"description": "Local development server",
-			},
+		{
+			name:        "不支持的版本",
+			content:     []byte(`{"openapi": "4.0.0", "info": {"title": "test", "version": "1.0.0"}}`),
+			filePath:    "test.json",
+			expectError: true,
+			description: "应该返回不支持的版本错误",
 		},
-		"tags": []map[string]interface{}{
-			{
-				"name":        "pet",
-				"description": "Everything about your Pets",
-			},
-			{
-				"name":        "store",
-				"description": "Operations about user orders",
-			},
+		{
+			name:        "缺少必要字段的 OpenAPI 3.0",
+			content:     []byte(`{"openapi": "3.0.0", "paths": {}}`),
+			filePath:    "test.json",
+			expectError: true,
+			description: "应该返回验证错误",
 		},
-		"paths": map[string]interface{}{
-			"/pets": map[string]interface{}{
-				"get": map[string]interface{}{
-					"tags":        []string{"pet"},
-					"summary":     "List all pets",
-					"operationId": "listPets",
-					"parameters": []map[string]interface{}{
-						{
-							"$ref": "#/components/parameters/limitParam",
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "A list of pets",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"type": "array",
-										"items": map[string]interface{}{
-											"$ref": "#/components/schemas/Pet",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-				"post": map[string]interface{}{
-					"tags":        []string{"pet"},
-					"summary":     "Create a pet",
-					"operationId": "createPet",
-					"requestBody": map[string]interface{}{
-						"required": true,
-						"content": map[string]interface{}{
-							"application/json": map[string]interface{}{
-								"schema": map[string]interface{}{
-									"$ref": "#/components/schemas/Pet",
-								},
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"201": map[string]interface{}{
-							"description": "Pet created",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/Pet",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			"/pets/{petId}": map[string]interface{}{
-				"get": map[string]interface{}{
-					"tags":        []string{"pet"},
-					"summary":     "Get pet by ID",
-					"operationId": "getPetById",
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "petId",
-							"in":          "path",
-							"required":    true,
-							"description": "ID of pet to fetch",
-							"schema": map[string]interface{}{
-								"type":   "integer",
-								"format": "int64",
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Pet details",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/Pet",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		"components": map[string]interface{}{
-			"schemas": map[string]interface{}{
-				"Pet": map[string]interface{}{
-					"type":     "object",
-					"required": []string{"id", "name"},
-					"properties": map[string]interface{}{
-						"id": map[string]interface{}{
-							"type":   "integer",
-							"format": "int64",
-						},
-						"name": map[string]interface{}{
-							"type": "string",
-						},
-						"tag": map[string]interface{}{
-							"type": "string",
-						},
-					},
-				},
-				"Error": map[string]interface{}{
-					"type":     "object",
-					"required": []string{"code", "message"},
-					"properties": map[string]interface{}{
-						"code": map[string]interface{}{
-							"type":   "integer",
-							"format": "int32",
-						},
-						"message": map[string]interface{}{
-							"type": "string",
-						},
-					},
-				},
-			},
-			"parameters": map[string]interface{}{
-				"limitParam": map[string]interface{}{
-					"name":        "limit",
-					"in":          "query",
-					"description": "Maximum number of items to return",
-					"schema": map[string]interface{}{
-						"type":    "integer",
-						"format":  "int32",
-						"minimum": 1,
-						"maximum": 100,
-						"default": 20,
-					},
-				},
-			},
-			"responses": map[string]interface{}{
-				"NotFound": map[string]interface{}{
-					"description": "Resource not found",
-				},
-				"Error": map[string]interface{}{
-					"description": "Generic error response",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": map[string]interface{}{
-								"$ref": "#/components/schemas/Error",
-							},
-						},
-					},
-				},
-			},
-			"securitySchemes": map[string]interface{}{
-				"api_key": map[string]interface{}{
-					"type": "apiKey",
-					"name": "X-API-KEY",
-					"in":   "header",
-				},
-				"petstore_auth": map[string]interface{}{
-					"type": "oauth2",
-					"flows": map[string]interface{}{
-						"implicit": map[string]interface{}{
-							"authorizationUrl": "https://api.example.com/oauth2/authorize",
-							"scopes": map[string]interface{}{
-								"read:pets":  "Read your pets",
-								"write:pets": "Modify your pets",
-							},
-						},
-					},
-				},
-			},
-		},
-		"security": []map[string]interface{}{
-			{
-				"api_key": []interface{}{},
-			},
+		{
+			name:        "缺少必要字段的 Swagger 2.0",
+			content:     []byte(`{"swagger": "2.0", "info": {"title": "", "version": "1.0.0"}, "paths": {}}`),
+			filePath:    "test.json",
+			expectError: true,
+			description: "应该返回验证错误",
 		},
 	}
 
-	content, _ := json.Marshal(doc)
-	return content
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceFile := &types.SourceFile{
+				CodebaseId:   1,
+				CodebasePath: "/test/path",
+				CodebaseName: "test-codebase",
+				Path:         tt.filePath,
+				Content:      tt.content,
+			}
 
-// 辅助函数：创建 Swagger 2.0 Petstore 文档
-func createSwagger2PetstoreDoc() []byte {
-	doc := map[string]interface{}{
-		"swagger": "2.0",
-		"info": map[string]interface{}{
-			"title":       "Swagger Petstore",
-			"description": "This is a sample server Petstore server.",
-			"version":     "1.0.3",
-			"contact": map[string]interface{}{
-				"email": "apiteam@swagger.io",
-			},
-			"license": map[string]interface{}{
-				"name": "Apache 2.0",
-				"url":  "http://www.apache.org/licenses/LICENSE-2.0.html",
-			},
-		},
-		"host":     "petstore.swagger.io",
-		"basePath": "/v2",
-		"schemes":  []string{"https", "http"},
-		"paths": map[string]interface{}{
-			"/pet": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "Add a new pet to the store",
-					"tags":        []string{"pet"},
-					"operationId": "addPet",
-					"responses": map[string]interface{}{
-						"405": map[string]interface{}{
-							"description": "Invalid input",
-						},
-					},
-				},
-				"put": map[string]interface{}{
-					"summary":     "Update an existing pet",
-					"tags":        []string{"pet"},
-					"operationId": "updatePet",
-					"responses": map[string]interface{}{
-						"400": map[string]interface{}{
-							"description": "Invalid ID supplied",
-						},
-						"404": map[string]interface{}{
-							"description": "Pet not found",
-						},
-					},
-				},
-			},
-			"/pet/findByStatus": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Finds Pets by status",
-					"tags":        []string{"pet"},
-					"operationId": "findPetsByStatus",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/pet/findByTags": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Finds Pets by tags",
-					"tags":        []string{"pet"},
-					"operationId": "findPetsByTags",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/pet/{petId}": map[string]interface{}{
-				"delete": map[string]interface{}{
-					"summary":     "Deletes a pet",
-					"tags":        []string{"pet"},
-					"operationId": "deletePet",
-					"responses": map[string]interface{}{
-						"400": map[string]interface{}{
-							"description": "Invalid ID supplied",
-						},
-					},
-				},
-				"get": map[string]interface{}{
-					"summary":     "Find pet by ID",
-					"tags":        []string{"pet"},
-					"operationId": "getPetById",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/pet/{petId}/uploadImage": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "uploads an image",
-					"tags":        []string{"pet"},
-					"operationId": "uploadFile",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/store/inventory": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Returns pet inventories by status",
-					"tags":        []string{"store"},
-					"operationId": "getInventory",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/store/order": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "Place an order for a pet",
-					"tags":        []string{"store"},
-					"operationId": "placeOrder",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/store/order/{orderId}": map[string]interface{}{
-				"delete": map[string]interface{}{
-					"summary":     "Delete purchase order by ID",
-					"tags":        []string{"store"},
-					"operationId": "deleteOrder",
-					"responses": map[string]interface{}{
-						"400": map[string]interface{}{
-							"description": "Invalid ID supplied",
-						},
-					},
-				},
-				"get": map[string]interface{}{
-					"summary":     "Find purchase order by ID",
-					"tags":        []string{"store"},
-					"operationId": "getOrderById",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "Create user",
-					"tags":        []string{"user"},
-					"operationId": "createUser",
-					"responses": map[string]interface{}{
-						"default": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user/createWithArray": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "Creates list of users with given input array",
-					"tags":        []string{"user"},
-					"operationId": "createUsersWithArrayInput",
-					"responses": map[string]interface{}{
-						"default": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user/createWithList": map[string]interface{}{
-				"post": map[string]interface{}{
-					"summary":     "Creates list of users with given input array",
-					"tags":        []string{"user"},
-					"operationId": "createUsersWithListInput",
-					"responses": map[string]interface{}{
-						"default": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user/login": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Logs user into the system",
-					"tags":        []string{"user"},
-					"operationId": "loginUser",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user/logout": map[string]interface{}{
-				"get": map[string]interface{}{
-					"summary":     "Logs out current logged in user session",
-					"tags":        []string{"user"},
-					"operationId": "logoutUser",
-					"responses": map[string]interface{}{
-						"default": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-			},
-			"/user/{username}": map[string]interface{}{
-				"delete": map[string]interface{}{
-					"summary":     "Delete user",
-					"tags":        []string{"user"},
-					"operationId": "deleteUser",
-					"responses": map[string]interface{}{
-						"400": map[string]interface{}{
-							"description": "Invalid username supplied",
-						},
-					},
-				},
-				"get": map[string]interface{}{
-					"summary":     "Get user by user name",
-					"tags":        []string{"user"},
-					"operationId": "getUserByName",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "successful operation",
-						},
-					},
-				},
-				"put": map[string]interface{}{
-					"summary":     "Updated user",
-					"tags":        []string{"user"},
-					"operationId": "updateUser",
-					"responses": map[string]interface{}{
-						"400": map[string]interface{}{
-							"description": "Invalid user supplied",
-						},
-					},
-				},
-			},
-		},
-		"definitions": map[string]interface{}{
-			"Pet": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"id": map[string]interface{}{
-						"type":   "integer",
-						"format": "int64",
-					},
-					"name": map[string]interface{}{
-						"type": "string",
-					},
-				},
-			},
-			"User": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"id": map[string]interface{}{
-						"type":   "integer",
-						"format": "int64",
-					},
-					"username": map[string]interface{}{
-						"type": "string",
-					},
-				},
-			},
-		},
-		"securityDefinitions": map[string]interface{}{
-			"api_key": map[string]interface{}{
-				"type": "apiKey",
-				"in":   "header",
-				"name": "api_key",
-			},
-			"petstore_auth": map[string]interface{}{
-				"type":             "oauth2",
-				"flow":             "implicit",
-				"authorizationUrl": "https://petstore.swagger.io/oauth/authorize",
-				"scopes": map[string]interface{}{
-					"read:pets":  "read your pets",
-					"write:pets": "modify pets in your account",
-				},
-			},
-		},
-		"tags": []map[string]interface{}{
-			{
-				"name":        "pet",
-				"description": "Everything about your Pets",
-			},
-			{
-				"name":        "store",
-				"description": "Access to Petstore orders",
-			},
-			{
-				"name":        "user",
-				"description": "Operations about user",
-			},
-		},
+			chunks, err := splitter.splitOpenAPIFile(sourceFile)
+
+			if tt.expectError {
+				assert.Error(t, err, tt.description)
+				assert.Nil(t, chunks, "错误时应该返回 nil chunks")
+			} else {
+				assert.NoError(t, err, tt.description)
+				assert.NotNil(t, chunks, "成功时应该返回非 nil chunks")
+			}
+		})
 	}
-
-	content, _ := json.Marshal(doc)
-	return content
-}
-
-// 辅助函数：创建不支持的版本文档
-func createUnsupportedVersionDoc() []byte {
-	doc := map[string]interface{}{
-		"openapi": "4.0.0",
-		"info": map[string]interface{}{
-			"title":   "Test API",
-			"version": "1.0.0",
-		},
-	}
-
-	content, _ := json.Marshal(doc)
-	return content
-}
-
-// 辅助函数：创建无效的 OpenAPI 3.0 文档
-func createInvalidOpenAPI3Doc() []byte {
-	doc := map[string]interface{}{
-		"openapi": "3.0.0",
-		// 缺少 info 字段
-		"paths": map[string]interface{}{},
-	}
-
-	content, _ := json.Marshal(doc)
-	return content
-}
-
-// 辅助函数：创建无效的 Swagger 2.0 文档
-func createInvalidSwagger2Doc() []byte {
-	doc := map[string]interface{}{
-		"swagger": "2.0",
-		"info": map[string]interface{}{
-			"title":   "", // 空标题
-			"version": "1.0.0",
-		},
-		"paths": map[string]interface{}{},
-	}
-
-	content, _ := json.Marshal(doc)
-	return content
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oasdiff/yaml"
 	"github.com/tiktoken-go/tokenizer"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/zgsm-ai/codebase-indexer/internal/parser"
@@ -426,7 +427,7 @@ const (
 // splitOpenAPIFile 将 OpenAPI 文件的Paths分割成多个新的OpenAPI文件
 func (p *CodeSplitter) splitOpenAPIFile(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
 	// 1. 验证 OpenAPI 规范版本
-	version, err := p.validateOpenAPISpec(codeFile.Content)
+	version, err := p.validateOpenAPISpec(codeFile.Content,codeFile.Path)
 	if err != nil {
 		return nil, parser.ErrInvalidOpenAPISpec
 	}
@@ -450,10 +451,23 @@ func (p *CodeSplitter) splitOpenAPIFile(codeFile *types.SourceFile) ([]*types.Co
 }
 
 // validateOpenAPISpec 验证 OpenAPI 规范版本
-func (p *CodeSplitter) validateOpenAPISpec(data []byte) (APIVersion, error) {
+func (p *CodeSplitter) validateOpenAPISpec(data []byte,filePath string) (APIVersion, error) {
+	// 根据文件后缀选择解析方式
 	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return Unknown, fmt.Errorf("不是合法的 JSON: %v", err)
+
+	// 获取文件后缀
+	if strings.HasSuffix(filePath, ".yaml") || strings.HasSuffix(filePath, ".yml") {
+		// YAML文件
+		if err := yaml.Unmarshal(data, &m); err != nil {
+			return Unknown, fmt.Errorf("YAML解析失败: %v", err)
+		}
+	} else if strings.HasSuffix(filePath, ".json") {
+		// JSON文件
+		if err := json.Unmarshal(data, &m); err != nil {
+			return Unknown, fmt.Errorf("JSON解析失败: %v", err)
+		}
+	} else {
+		return Unknown, fmt.Errorf("不是合法的 YAML/JSON: %v", filePath)
 	}
 
 	switch {
