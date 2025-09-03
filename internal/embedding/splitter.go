@@ -390,6 +390,10 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 			if tokenCount > p.splitOptions.MaxTokensPerChunk {
 				chunkContent := currentChunk.String()
 				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine)
+				for i, subChunk := range subChunks {
+					subChunk.Language = "doc"
+					subChunks[i] = subChunk
+				}
 				chunks = append(chunks, subChunks...)
 				currentChunk.Reset()
 				currentLine = i + 1
@@ -424,10 +428,11 @@ const (
 	Swagger2 APIVersion = "swagger2"
 	Unknown  APIVersion = "unknown"
 )
+
 // splitOpenAPIFile 将 OpenAPI 文件的Paths分割成多个新的OpenAPI文件
 func (p *CodeSplitter) splitOpenAPIFile(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
 	// 1. 验证 OpenAPI 规范版本
-	version, err := p.validateOpenAPISpec(codeFile.Content,codeFile.Path)
+	version, err := p.validateOpenAPISpec(codeFile.Content, codeFile.Path)
 	if err != nil {
 		return nil, parser.ErrInvalidOpenAPISpec
 	}
@@ -451,7 +456,7 @@ func (p *CodeSplitter) splitOpenAPIFile(codeFile *types.SourceFile) ([]*types.Co
 }
 
 // validateOpenAPISpec 验证 OpenAPI 规范版本
-func (p *CodeSplitter) validateOpenAPISpec(data []byte,filePath string) (APIVersion, error) {
+func (p *CodeSplitter) validateOpenAPISpec(data []byte, filePath string) (APIVersion, error) {
 	// 根据文件后缀选择解析方式
 	var m map[string]any
 
@@ -501,7 +506,7 @@ func (p *CodeSplitter) splitOpenAPI3File(codeFile *types.SourceFile) ([]*types.C
 	// 解析 OpenAPI 3.x 文档
 	loader := openapi3.NewLoader()
 	// TODO 是否处理外部引用呢
-	loader.IsExternalRefsAllowed = false   // 默认状态
+	loader.IsExternalRefsAllowed = false // 默认状态
 	doc, err := loader.LoadFromData(codeFile.Content)
 	if err != nil {
 		return nil, fmt.Errorf("openapi3 解析失败: %v", err)
@@ -531,7 +536,6 @@ func (p *CodeSplitter) splitOpenAPI3File(codeFile *types.SourceFile) ([]*types.C
 
 		// 更新文档标题以包含路径信息
 		newDoc.Info.Title = fmt.Sprintf("%s - %s", doc.Info.Title, path)
-
 
 		// 序列化新的文档
 		docBytes, err := json.Marshal(newDoc)
@@ -601,7 +605,6 @@ func (p *CodeSplitter) splitSwagger2File(codeFile *types.SourceFile) ([]*types.C
 		// 更新文档标题以包含路径信息
 		newDoc.Info.Title = fmt.Sprintf("%s - %s", doc.Info.Title, path)
 
-
 		// 序列化新的文档
 		docBytes, err := json.Marshal(newDoc)
 		if err != nil {
@@ -632,7 +635,7 @@ func (p *CodeSplitter) splitSwagger2File(codeFile *types.SourceFile) ([]*types.C
 // validateSwagger2Doc 验证 Swagger 2.0 文档
 func (p *CodeSplitter) validateSwagger2Doc(doc *openapi2.T) error {
 	// 检查必要字段
-	if  doc.Info.Title == "" {
+	if doc.Info.Title == "" {
 		return fmt.Errorf("info.title 不能为空")
 	}
 	if doc.Info.Version == "" {
