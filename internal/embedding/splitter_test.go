@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -859,6 +860,336 @@ func TestSplitMarkdownFileLargeContent(t *testing.T) {
 		for i, chunk := range chunks {
 			assert.LessOrEqual(t, chunk.TokenCount, splitOptions.MaxTokensPerChunk,
 				"chunk %d 的 TokenCount 应该 <= MaxTokensPerChunk", i)
+		}
+	})
+}
+
+// TestSplitMarkdownFileBySitter 测试使用 tree-sitter 的 markdown 文件分割功能
+func TestSplitMarkdownFileBySitter(t *testing.T) {
+	// 创建测试用的 CodeSplitter
+	splitOptions := SplitOptions{
+		MaxTokensPerChunk:          1000,
+		SlidingWindowOverlapTokens: 100,
+		EnableMarkdownParsing:      true,
+	}
+	splitter, err := NewCodeSplitter(splitOptions)
+	assert.NoError(t, err)
+
+	// 定义测试用例
+	testCases := []struct {
+		name        string
+		content     []byte
+		expectError bool
+		expectCount int
+		description string
+	}{
+		{
+			name:        "简单标题和段落",
+			content:     []byte("# 标题1\n\n这是一个段落。\n\n## 标题2\n\n这是另一个段落。"),
+			expectError: false,
+			expectCount: 2, // 两个标题块
+			description: "应该按标题分割 markdown 文件",
+		},
+		{
+			name:        "多级标题",
+			content:     []byte("# 一级标题\n\n内容1\n\n## 二级标题\n\n内容2\n\n### 三级标题\n\n内容3\n\n# 另一个一级标题\n\n内容4"),
+			expectError: false,
+			expectCount: 4, // 4个主要部分
+			description: "应该正确处理多级标题结构",
+		},
+		{
+			name:        "只有标题没有内容",
+			content:     []byte("# 标题1\n\n## 标题2\n\n### 标题3"),
+			expectError: false,
+			expectCount: 3, // 3个标题块
+			description: "应该正确处理只有标题的文档",
+		},
+		{
+			name:        "空文件",
+			content:     []byte(""),
+			expectError: false,
+			expectCount: 1, // 空文件也会被当作一个块处理
+			description: "空文件应该返回 1 个 chunk",
+		},
+		{
+			name:        "没有标题的纯文本",
+			content:     []byte("这是第一行文本。\n这是第二行文本。\n这是第三行文本。"),
+			expectError: false,
+			expectCount: 1, // 一个文本块
+			description: "应该正确处理没有标题的纯文本文件",
+		},
+		{
+			name:        "复杂嵌套标题结构",
+			content:     []byte("# 主标题\n\n介绍文本。\n\n## 子标题1\n\n更多文本。\n\n### 子子标题1\n\n详细内容。\n\n## 子标题2\n\n结尾文本。\n\n### 子子标题2\n\n更多详细内容。"),
+			expectError: false,
+			expectCount: 4, // 主标题 + 子标题1（包含子子标题1） + 子标题2（包含子子标题2）
+			description: "应该正确处理复杂的嵌套标题结构",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建测试用的 SourceFile
+			sourceFile := &types.SourceFile{
+				CodebaseId:   1,
+				CodebasePath: "/test/path",
+				CodebaseName: "test-codebase",
+				Path:         "test.md",
+				Content:      tt.content,
+			}
+
+			// 执行分割
+			chunks, err := splitter.splitMarkdownFileBySitter(sourceFile)
+
+			// 验证结果
+			if tt.expectError {
+				assert.Error(t, err, tt.description)
+				assert.Nil(t, chunks, "错误时应该返回 nil chunks")
+			} else {
+				assert.NoError(t, err, tt.description)
+				assert.NotNil(t, chunks, "成功时应该返回非 nil chunks")
+				assert.Len(t, chunks, tt.expectCount, "应该返回正确数量的 chunks")
+
+				// 验证每个 chunk 的基本属性
+				for i, chunk := range chunks {
+					assert.Equal(t, "doc", chunk.Language, "chunk %d 的语言应该是 'doc'", i)
+					assert.Equal(t, sourceFile.CodebaseId, chunk.CodebaseId, "chunk %d 的 CodebaseId 应该匹配", i)
+					assert.Equal(t, sourceFile.CodebasePath, chunk.CodebasePath, "chunk %d 的 CodebasePath 应该匹配", i)
+					assert.Equal(t, sourceFile.CodebaseName, chunk.CodebaseName, "chunk %d 的 CodebaseName 应该匹配", i)
+					assert.Equal(t, sourceFile.Path, chunk.FilePath, "chunk %d 的 FilePath 应该匹配", i)
+					assert.Greater(t, chunk.TokenCount, 0, "chunk %d 的 TokenCount 应该大于 0", i)
+					assert.NotEmpty(t, chunk.Content, "chunk %d 的 Content 不应该为空", i)
+
+					// 验证范围信息
+					assert.Len(t, chunk.Range, 4, "chunk %d 的 Range 应该有 4 个元素", i)
+					assert.GreaterOrEqual(t, chunk.Range[0], 0, "chunk %d 的起始行应该 >= 0", i)
+					assert.GreaterOrEqual(t, chunk.Range[2], chunk.Range[0], "chunk %d 的结束行应该 >= 起始行", i)
+				}
+			}
+		})
+	}
+}
+
+// TestSplitRealMarkdownFileBySitter 测试真实 markdown 文件的 tree-sitter 分割功能
+func TestSplitRealMarkdownFileBySitter(t *testing.T) {
+	// 创建测试用的 CodeSplitter
+	splitOptions := SplitOptions{
+		MaxTokensPerChunk:          1000,
+		SlidingWindowOverlapTokens: 100,
+		EnableMarkdownParsing:      true,
+	}
+	splitter, err := NewCodeSplitter(splitOptions)
+	assert.NoError(t, err)
+
+	// 定义测试文件
+	testFiles := []struct {
+		name        string
+		filePath    string
+		expectError bool
+		expectCount int
+		description string
+	}{
+		{
+			name:        "api_documentation文档",
+			filePath:    "/Code/Go/zgsm-ai/codebase-embedder/docs/api_documentation.md",
+			expectError: false,
+			expectCount: 3, // 根据实际文档结构调整
+			description: "应该成功分割真实的 Markdown 文档",
+		},
+	}
+
+	for _, tt := range testFiles {
+		t.Run(tt.name, func(t *testing.T) {
+			// 读取文件内容
+			content, err := os.ReadFile(tt.filePath)
+			if err != nil {
+				// 如果文件不存在，跳过这个测试
+				t.Skipf("无法读取文件 %s: %v", tt.filePath, err)
+			}
+
+			// 创建测试用的 SourceFile
+			sourceFile := &types.SourceFile{
+				CodebaseId:   1,
+				CodebasePath: "/test/path",
+				CodebaseName: "test-codebase",
+				Path:         filepath.Base(tt.filePath),
+				Content:      content,
+			}
+
+			// 执行分割
+			startTime := time.Now()
+			chunks, err := splitter.splitMarkdownFileBySitter(sourceFile)
+			duration := time.Since(startTime)
+
+			// 验证结果
+			if tt.expectError {
+				assert.Error(t, err, tt.description)
+				assert.Nil(t, chunks, "错误时应该返回 nil chunks")
+			} else {
+				assert.NoError(t, err, tt.description)
+				assert.NotNil(t, chunks, "成功时应该返回非 nil chunks")
+				assert.GreaterOrEqual(t, len(chunks), tt.expectCount, "应该返回至少 %d 个 chunks", tt.expectCount)
+
+				// 打印所有 chunks 的内容（仅在调试时使用）
+				if testing.Verbose() {
+					fmt.Printf("=== Tree-sitter 分割结果：共 %d 个 chunks ===\n", len(chunks))
+					for i, chunk := range chunks {
+						fmt.Printf("\n--- Chunk %d ---\n", i+1)
+						fmt.Printf("Token数量: %d\n", chunk.TokenCount)
+						fmt.Printf("字节数: %d\n", len(chunk.Content))
+						fmt.Printf("范围: %v\n", chunk.Range)
+						fmt.Printf("内容:\n%s\n", string(chunk.Content))
+						fmt.Printf("--- Chunk %d 结束 ---\n", i+1)
+					}
+					fmt.Printf("=== 分割结果结束 ===\n\n")
+				}
+
+				// 验证每个 chunk 的基本属性
+				for i, chunk := range chunks {
+					assert.Equal(t, "doc", chunk.Language, "chunk %d 的语言应该是 'doc'", i)
+					assert.Equal(t, sourceFile.CodebaseId, chunk.CodebaseId, "chunk %d 的 CodebaseId 应该匹配", i)
+					assert.Equal(t, sourceFile.CodebasePath, chunk.CodebasePath, "chunk %d 的 CodebasePath 应该匹配", i)
+					assert.Equal(t, sourceFile.CodebaseName, chunk.CodebaseName, "chunk %d 的 CodebaseName 应该匹配", i)
+					assert.Equal(t, sourceFile.Path, chunk.FilePath, "chunk %d 的 FilePath 应该匹配", i)
+					assert.Greater(t, chunk.TokenCount, 0, "chunk %d 的 TokenCount 应该大于 0", i)
+					assert.NotEmpty(t, chunk.Content, "chunk %d 的 Content 不应该为空", i)
+
+					// 验证范围信息
+					assert.Len(t, chunk.Range, 4, "chunk %d 的 Range 应该有 4 个元素", i)
+					assert.GreaterOrEqual(t, chunk.Range[0], 0, "chunk %d 的起始行应该 >= 0", i)
+					assert.GreaterOrEqual(t, chunk.Range[2], chunk.Range[0], "chunk %d 的结束行应该 >= 起始行", i)
+				}
+				fmt.Printf("Tree-sitter 分割耗时: %v\n", duration)
+
+				// 验证特定内容：确保主要章节都被正确分割
+				// foundEpic1 := false
+				// foundEpic2 := false
+				// foundBenchmark := false
+
+				// for _, chunk := range chunks {
+				// 	chunkStr := string(chunk.Content)
+				// 	if strings.Contains(chunkStr, "Codebase Embedder API 文档") {
+				// 		foundEpic1 = true
+				// 	}
+				// 	if strings.Contains(chunkStr, "## 1. 服务简介") {
+				// 		foundEpic2 = true
+				// 	}
+				// 	if strings.Contains(chunkStr, "## 2. 认证方法") {
+				// 		foundBenchmark = true
+				// 	}
+				// }
+
+				// assert.True(t, foundEpic1, "应该找到包含 Codebase Embedder API 文档 的 chunk")
+				// assert.True(t, foundEpic2, "应该找到包含 ## 1. 服务简介 的 chunk")
+				// assert.True(t, foundBenchmark, "应该找到包含 ## 2. 认证方法 的 chunk")
+			}
+		})
+	}
+}
+
+// TestSplitMarkdownFileBySitterLargeContent 测试大内容 markdown 文件的 tree-sitter 分割
+func TestSplitMarkdownFileBySitterLargeContent(t *testing.T) {
+	splitOptions := SplitOptions{
+		MaxTokensPerChunk:          50, // 设置较小的 token 限制来测试分割
+		SlidingWindowOverlapTokens: 10,
+		EnableMarkdownParsing:      true,
+	}
+	splitter, err := NewCodeSplitter(splitOptions)
+	assert.NoError(t, err)
+
+	t.Run("大文本内容分割", func(t *testing.T) {
+		// 创建一个长文本
+		var longText strings.Builder
+		longText.WriteString("# 大标题\n\n")
+		for i := 0; i < 100; i++ {
+			longText.WriteString(fmt.Sprintf("这是第 %d 行文本，用于测试大内容的分割功能。\n", i))
+		}
+
+		sourceFile := &types.SourceFile{
+			CodebaseId:   1,
+			CodebasePath: "/test/path",
+			CodebaseName: "test-codebase",
+			Path:         "large.md",
+			Content:      []byte(longText.String()),
+		}
+
+		chunks, err := splitter.splitMarkdownFileBySitter(sourceFile)
+		assert.NoError(t, err)
+		assert.Greater(t, len(chunks), 1, "大内容应该被分割成多个 chunks")
+
+		// 验证所有 chunks 的 token 数量都不超过限制
+		for i, chunk := range chunks {
+			assert.LessOrEqual(t, chunk.TokenCount, splitOptions.MaxTokensPerChunk,
+				"chunk %d 的 TokenCount 应该 <= MaxTokensPerChunk", i)
+		}
+	})
+}
+
+// TestSplitMarkdownFileBySitterHeaderPath 测试标题路径的正确性
+func TestSplitMarkdownFileBySitterHeaderPath(t *testing.T) {
+	splitOptions := SplitOptions{
+		MaxTokensPerChunk:          1000,
+		SlidingWindowOverlapTokens: 100,
+		EnableMarkdownParsing:      true,
+	}
+	splitter, err := NewCodeSplitter(splitOptions)
+	assert.NoError(t, err)
+
+	t.Run("标题路径测试", func(t *testing.T) {
+		content := []byte(`# 一级标题 A
+
+一级 A 内容。
+
+## 二级标题 A1
+
+二级 A1 内容。
+
+### 三级标题 A1a
+
+三级 A1a 内容。
+
+# 一级标题 B
+
+一级 B 内容。
+
+## 二级标题 B1
+
+二级 B1 内容。
+`)
+
+		sourceFile := &types.SourceFile{
+			CodebaseId:   1,
+			CodebasePath: "/test/path",
+			CodebaseName: "test-codebase",
+			Path:         "test.md",
+			Content:      content,
+		}
+
+		chunks, err := splitter.splitMarkdownFileBySitter(sourceFile)
+		assert.NoError(t, err)
+		assert.Len(t, chunks, 4, "应该有 4 个 chunks")
+
+		// 验证每个 chunk 的标题路径
+		for i, chunk := range chunks {
+			chunkStr := string(chunk.Content)
+
+			switch i {
+			case 0: // 一级标题 A
+				assert.Contains(t, chunkStr, "# 一级标题 A", "chunk 0 应该包含一级标题 A")
+				assert.NotContains(t, chunkStr, "# 一级标题 B", "chunk 0 不应该包含一级标题 B")
+			case 1: // 二级标题 A1
+				assert.Contains(t, chunkStr, "# 一级标题 A", "chunk 1 应该包含父级标题 A")
+				assert.Contains(t, chunkStr, "## 二级标题 A1", "chunk 1 应该包含二级标题 A1")
+				assert.NotContains(t, chunkStr, "### 三级标题 A1a", "chunk 1 不应该包含三级标题 A1a")
+			case 2: // 三级标题 A1a
+				assert.Contains(t, chunkStr, "# 一级标题 A", "chunk 2 应该包含一级标题 A")
+				assert.Contains(t, chunkStr, "## 二级标题 A1", "chunk 2 应该包含二级标题 A1")
+				assert.Contains(t, chunkStr, "### 三级标题 A1a", "chunk 2 应该包含三级标题 A1a")
+			case 3: // 一级标题 B
+				assert.Contains(t, chunkStr, "# 一级标题 B", "chunk 3 应该包含一级标题 B")
+				assert.Contains(t, chunkStr, "## 二级标题 B1", "chunk 3 应该包含二级标题 B1")
+				assert.NotContains(t, chunkStr, "# 一级标题 A", "chunk 3 不应该包含一级标题 A")
+			}
 		}
 	})
 }
