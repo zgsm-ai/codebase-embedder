@@ -17,6 +17,11 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
+const (
+	LanguageTypeCode = "code"
+	LanguageTypeDoc  = "doc"
+)
+
 type CodeSplitter struct {
 	tokenizer    tokenizer.Codec
 	splitOptions SplitOptions
@@ -103,11 +108,11 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 
 			// 处理代码切块
 			if tokenCount > p.splitOptions.MaxTokensPerChunk {
-				subChunks := p.splitFuncWithSlidingWindow(string(content), codeFile, int(startPos.Row))
+				subChunks := p.splitFuncWithSlidingWindow(string(content), codeFile, int(startPos.Row), LanguageTypeCode)
 				allChunks = append(allChunks, subChunks...)
 			} else {
 				allChunks = append(allChunks, &types.CodeChunk{
-					Language:     "code",
+					Language:     LanguageTypeCode,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -165,7 +170,7 @@ func (p *CodeSplitter) countToken(content []byte) int {
 }
 
 // splitFuncWithSlidingWindow 使用滑动窗口将大函数分割成多个小块
-func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int) []*types.CodeChunk {
+func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int, languageType string) []*types.CodeChunk {
 	filePath := codeFile.Path
 	maxTokens := p.splitOptions.MaxTokensPerChunk
 	overlapTokens := p.splitOptions.SlidingWindowOverlapTokens
@@ -222,10 +227,10 @@ func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *type
 
 		// 计算结束行和列
 		endLine := startLine + countLines(chunkContent) - 1
-		endColumn := calculateColumn(content[startByte:endByte+1], endByte-startByte)
+		endColumn := calculateColumn(chunkContent, endByte-startByte)
 
 		chunks = append(chunks, &types.CodeChunk{
-			Language:     "code",
+			Language:     languageType,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -251,6 +256,81 @@ func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *type
 		// 防止索引越界
 		if startTokenIdx < 0 {
 			startTokenIdx = 0
+		}
+	}
+
+	return chunks
+}
+
+// splitTextWithSlidingWindow 使用滑动窗口将大文本分割成多个小块（基于字节数而非token数）
+func (p *CodeSplitter) splitTextWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int, languageType string) []*types.CodeChunk {
+	filePath := codeFile.Path
+	maxBytes := p.splitOptions.MaxTokensPerChunk * 4              // 将token转换为字节数
+	overlapBytes := p.splitOptions.SlidingWindowOverlapTokens * 4 // 将token转换为字节数
+
+	if maxBytes <= 0 || overlapBytes < 0 || overlapBytes >= maxBytes {
+		return nil
+	}
+
+	totalBytes := len(content)
+	if totalBytes == 0 {
+		return nil
+	}
+
+	// 预分配切片
+	estimatedChunks := (totalBytes + maxBytes - 1) / maxBytes
+	chunks := make([]*types.CodeChunk, 0, estimatedChunks)
+
+	startByteIdx := 0
+
+	for startByteIdx < totalBytes {
+		// 计算当前块的结束位置
+		endByteIdx := startByteIdx + maxBytes
+		if endByteIdx > totalBytes {
+			endByteIdx = totalBytes
+		}
+
+		// 提取代码块
+		chunkContent := content[startByteIdx:endByteIdx]
+
+		// 计算起始行和列
+		startLine := funcStartLine + countLines(content[:startByteIdx])
+		startColumn := calculateColumn(content, startByteIdx)
+
+		// 计算结束行和列
+		endLine := startLine + countLines(chunkContent) - 1
+		endColumn := calculateColumn(chunkContent, endByteIdx-startByteIdx)
+
+		// 计算token数量（用于兼容性，但不再用于分割逻辑）
+		tokenCount := (endByteIdx - startByteIdx) / 4 // 粗略估计：1token≈4字节
+
+		chunks = append(chunks, &types.CodeChunk{
+			Language:     languageType,
+			CodebaseId:   codeFile.CodebaseId,
+			CodebasePath: codeFile.CodebasePath,
+			CodebaseName: codeFile.CodebaseName,
+			Content:      []byte(chunkContent),
+			FilePath:     filePath,
+			Range:        []int{startLine, startColumn, endLine, endColumn},
+			TokenCount:   tokenCount,
+		})
+
+		if endByteIdx >= totalBytes {
+			break
+		}
+
+		// 计算下一个块的起始位置（应用滑动窗口）
+		if remaining := totalBytes - endByteIdx; remaining < maxBytes {
+			// 最后一块，调整重叠量
+			startByteIdx = endByteIdx - (maxBytes - remaining)
+		} else {
+			// 正常情况，使用固定重叠
+			startByteIdx = endByteIdx - overlapBytes
+		}
+
+		// 防止索引越界
+		if startByteIdx < 0 {
+			startByteIdx = 0
 		}
 	}
 
@@ -318,7 +398,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "doc",
+					Language:     LanguageTypeDoc,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -337,7 +417,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 					tokenCount := p.countToken([]byte(chunkContent))
 
 					chunks = append(chunks, &types.CodeChunk{
-						Language:     "doc",
+						Language:     LanguageTypeDoc,
 						CodebaseId:   codeFile.CodebaseId,
 						CodebasePath: codeFile.CodebasePath,
 						CodebaseName: codeFile.CodebaseName,
@@ -365,7 +445,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "doc",
+					Language:     LanguageTypeDoc,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -391,11 +471,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 			tokenCount := p.countToken([]byte(currentChunk.String()))
 			if tokenCount > p.splitOptions.MaxTokensPerChunk {
 				chunkContent := currentChunk.String()
-				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine)
-				for i, subChunk := range subChunks {
-					subChunk.Language = "doc"
-					subChunks[i] = subChunk
-				}
+				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine, LanguageTypeDoc)
 				chunks = append(chunks, subChunks...)
 				currentChunk.Reset()
 				currentLine = i + 1
@@ -409,7 +485,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 		tokenCount := p.countToken([]byte(chunkContent))
 
 		chunks = append(chunks, &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -454,29 +530,26 @@ func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]
 	var chunks []*types.CodeChunk
 
 	// 如果没有标题节点，返回空切片
-	// if len(allHeaders) == 0 {
-	// 	tokenCount := p.countToken(codeFile.Content)
-	// 	if tokenCount > p.splitOptions.MaxTokensPerChunk {
-	// 		subChunks := p.splitFuncWithSlidingWindow(source, codeFile, 0)
-	// 		for _, subChunk := range subChunks {
-	// 			subChunk.Language = "doc"
-	// 			chunks = append(chunks, subChunk)
-	// 		}
-	// 	} else {
-	// 		chunk := &types.CodeChunk{
-	// 			Language:     "doc",
-	// 			CodebaseId:   codeFile.CodebaseId,
-	// 			CodebasePath: codeFile.CodebasePath,
-	// 			CodebaseName: codeFile.CodebaseName,
-	// 			Content:      codeFile.Content,
-	// 			FilePath:     codeFile.Path,
-	// 			Range:        []int{0, 0, countLines(source) - 1, len(source)},
-	// 			TokenCount:   tokenCount,
-	// 		}
-	// 		chunks = append(chunks, chunk)
-	// 	}
-	// 	return chunks, nil
-	// }
+	if len(allHeaders) == 0 {
+		byteCount := len(codeFile.Content)
+		if byteCount > p.splitOptions.MaxTokensPerChunk*4 {
+			subChunks := p.splitTextWithSlidingWindow(source, codeFile, 0, LanguageTypeDoc)
+			chunks = append(chunks, subChunks...)
+		} else {
+			chunk := &types.CodeChunk{
+				Language:     LanguageTypeDoc,
+				CodebaseId:   codeFile.CodebaseId,
+				CodebasePath: codeFile.CodebasePath,
+				CodebaseName: codeFile.CodebaseName,
+				Content:      codeFile.Content,
+				FilePath:     codeFile.Path,
+				Range:        []int{0, 0, countLines(source) - 1, calculateColumn(source, len(source)-1)},
+				TokenCount:   byteCount / 4,
+			}
+			chunks = append(chunks, chunk)
+		}
+		return chunks, nil
+	}
 
 	// 为每个标题节点直接创建代码块
 	for i, header := range allHeaders {
@@ -510,7 +583,7 @@ func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]
 		// 处理超过最大 token 数量的情况
 		if tokenCount > p.splitOptions.MaxTokensPerChunk {
 			// 使用滑动窗口分割大块内容
-			subChunks := p.splitFuncWithSlidingWindow(content, codeFile, startLine)
+			subChunks := p.splitTextWithSlidingWindow(content, codeFile, startLine, LanguageTypeDoc)
 
 			// 为每个子块添加标题路径
 			for _, subChunk := range subChunks {
@@ -528,7 +601,6 @@ func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]
 				// 更新子块的内容和token数量
 				subChunk.Content = []byte(fullContent.String())
 				subChunk.TokenCount = p.countToken(subChunk.Content)
-				subChunk.Language = "doc"
 
 				chunks = append(chunks, subChunk)
 			}
@@ -551,7 +623,7 @@ func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]
 
 			// 创建代码块
 			chunk := &types.CodeChunk{
-				Language:     "doc",
+				Language:     LanguageTypeDoc,
 				CodebaseId:   codeFile.CodebaseId,
 				CodebasePath: codeFile.CodebasePath,
 				CodebaseName: codeFile.CodebaseName,
@@ -565,18 +637,6 @@ func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]
 	}
 
 	return chunks, nil
-}
-
-// SectionInfo 段落信息结构
-type SectionInfo struct {
-	Headers   []string // 标题路径
-	Content   string   // 该段的内容
-	StartLine int      // 开始行
-	StartCol  int      // 开始列
-	EndLine   int      // 结束行
-	EndCol    int      // 结束列
-	StartPos  int      // 开始位置
-	EndPos    int      // 结束位置
 }
 
 // collectAllHeaders 收集所有标题节点
@@ -627,7 +687,7 @@ func getHeaderPath(headerNode *sitter.Node, source string, allHeaders []*sitter.
 	if currentTitle != "" {
 		// 获取当前标题的级别
 		currentLevel = getHeaderLevel(headerNode)
-		// 当前标题路径不记录在path中，在后续content中包含
+		// 当前标题路径记录在path中，在后续content中不包含
 		path = append(path, currentTitle)
 	}
 
@@ -830,7 +890,7 @@ func (p *CodeSplitter) splitOpenAPI3File(codeFile *types.SourceFile) ([]*types.C
 
 		// 创建代码块
 		chunk := &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -898,7 +958,7 @@ func (p *CodeSplitter) splitSwagger2File(codeFile *types.SourceFile) ([]*types.C
 
 		// 创建代码块
 		chunk := &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,

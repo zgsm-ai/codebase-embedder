@@ -993,7 +993,7 @@ func TestSplitRealMarkdownFileBySitter(t *testing.T) {
 			name:        "api_documentation文档",
 			filePath:    "/Code/Go/zgsm-ai/codebase-embedder/docs/api_documentation.md",
 			expectError: false,
-			expectCount: 3, // 根据实际文档结构调整
+			expectCount: 2, // 根据实际文档结构调整
 			description: "应该成功分割真实的 Markdown 文档",
 		},
 	}
