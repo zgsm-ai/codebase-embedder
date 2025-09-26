@@ -167,6 +167,16 @@ type DocumentsSummaryResponseData struct {
 	Embedding  EmbeddingSummary `json:"embedding"`
 }
 
+type CombinedSummaryRequest struct {
+	ClientId     string `form:"clientId"`     // 客户端id
+	CodebasePath string `form:"codebasePath"` // 项目绝对路径
+}
+
+type CombinedSummaryResponseData struct {
+	TotalFiles int
+	Embedding  EmbeddingSummary `json:"embedding"`
+}
+
 type IndexTaskRequest struct {
 	ClientId      string `json:"clientId"`               // 客户端唯一标识（如MAC地址）
 	CodebasePath  string `json:"codebasePath"`           // 项目绝对路径
