@@ -24,6 +24,7 @@ type SplitOptions struct {
 	MaxTokensPerChunk          int
 	SlidingWindowOverlapTokens int
 	EnableMarkdownParsing      bool // 是否启用markdown文件解析
+	EnableOpenAPIParsing       bool // 是否启用OpenAPI文档解析
 }
 
 // NewCodeSplitter 创建代码分割器
@@ -55,12 +56,15 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 	if language.Language == parser.Markdown && p.splitOptions.EnableMarkdownParsing {
 		return p.splitMarkdownFile(codeFile)
 	}
-	if language.Language == parser.OpenAPI || language.Language == parser.Swagger {
+	if (language.Language == parser.OpenAPI || language.Language == parser.Swagger)  {
+		if !p.splitOptions.EnableOpenAPIParsing{
+			return nil,fmt.Errorf("openapi file parse is close")
+		}
 		return p.splitOpenAPIFile(codeFile)
 	}
 
 	sitterParser := sitter.NewParser()
-
+	defer sitterParser.Close()
 	// 设置解析器语言（复用已创建的Parser）
 	if err := sitterParser.SetLanguage(language.SitterLanguage()); err != nil {
 		return nil, fmt.Errorf("failed to set parser language: %w", err)

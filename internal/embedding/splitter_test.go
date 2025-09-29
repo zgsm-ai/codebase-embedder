@@ -20,6 +20,7 @@ func TestSplitOpenAPIFile(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -34,28 +35,28 @@ func TestSplitOpenAPIFile(t *testing.T) {
 	}{
 		{
 			name:        "OpenAPI 3.0 JSON 文件",
-			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.json",
+			filePath:    "../../bin/openapi3.json",
 			expectError: false,
 			expectCount: 2, // /pets 和 /pets/{petId} 两个路径
 			description: "应该成功分割 OpenAPI 3.0 JSON 文件",
 		},
 		{
 			name:        "OpenAPI 3.0 YAML 文件",
-			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.yaml",
+			filePath:    "../../bin/openapi3.yaml",
 			expectError: false,
 			expectCount: 2, // /users 和 /users/{id} 两个路径
 			description: "应该成功分割 OpenAPI 3.0 YAML 文件",
 		},
 		{
 			name:        "Swagger 2.0 JSON 文件",
-			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.json",
+			filePath:    "../../bin/swagger2.json",
 			expectError: false,
 			expectCount: 14, // 14个不同的路径
 			description: "应该成功分割 Swagger 2.0 JSON 文件",
 		},
 		{
 			name:        "Swagger 2.0 YAML 文件",
-			filePath:    "/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.yaml",
+			filePath:    "../../bin/swagger2.yaml",
 			expectError: true, // 目前不支持Swagger 2.0 YAML 文件
 			expectCount: 2,    // /users 和 /users/{id} 两个路径
 			description: "应该成功分割 Swagger 2.0 YAML 文件",
@@ -76,10 +77,11 @@ func TestSplitOpenAPIFile(t *testing.T) {
 				Path:         filepath.Base(tt.filePath),
 				Content:      content,
 			}
-
+			if !splitter.splitOptions.EnableOpenAPIParsing {
+				assert.Error(t, err, "openapi file parse is close")
+			}
 			// 执行分割
 			chunks, err := splitter.splitOpenAPIFile(sourceFile)
-
 			// 验证结果
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
@@ -131,6 +133,7 @@ func TestValidateOpenAPISpec(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -181,6 +184,9 @@ func TestValidateOpenAPISpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if !splitter.splitOptions.EnableOpenAPIParsing {
+				assert.Error(t, err, "openapi file parse is close")
+			}
 			version, err := splitter.validateOpenAPISpec(tt.content, tt.filePath)
 
 			if tt.expectError {
@@ -199,11 +205,15 @@ func TestSplitOpenAPIFileEdgeCases(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
 
 	t.Run("空路径的 OpenAPI 文档", func(t *testing.T) {
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
 		doc := map[string]interface{}{
 			"openapi": "3.0.0",
 			"info": map[string]interface{}{
@@ -228,6 +238,9 @@ func TestSplitOpenAPIFileEdgeCases(t *testing.T) {
 	})
 
 	t.Run("单个路径的文档", func(t *testing.T) {
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
 		doc := map[string]interface{}{
 			"openapi": "3.0.0",
 			"info": map[string]interface{}{
@@ -284,12 +297,16 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
 
 	t.Run("Swagger 2.0 JSON 完整文档分割", func(t *testing.T) {
-		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.json")
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
+		content, err := os.ReadFile("../../bin/swagger2.json")
 		assert.NoError(t, err, "应该能够读取 swagger2.json 文件")
 
 		sourceFile := &types.SourceFile{
@@ -338,7 +355,10 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 	})
 
 	t.Run("OpenAPI 3.0 JSON 文档分割", func(t *testing.T) {
-		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.json")
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
+		content, err := os.ReadFile("../../bin/openapi3.json")
 		assert.NoError(t, err, "应该能够读取 openapi3.json 文件")
 
 		sourceFile := &types.SourceFile{
@@ -382,7 +402,10 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 	})
 
 	t.Run("OpenAPI 3.0 YAML 文档分割", func(t *testing.T) {
-		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/openapi3.yaml")
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
+		content, err := os.ReadFile("../../bin/openapi3.yaml")
 		assert.NoError(t, err, "应该能够读取 openapi3.yaml 文件")
 
 		sourceFile := &types.SourceFile{
@@ -426,7 +449,10 @@ func TestComplexOpenAPIDocumentSplitting(t *testing.T) {
 	})
 
 	t.Run("Swagger 2.0 YAML 文档分割", func(t *testing.T) {
-		content, err := os.ReadFile("/home/kcx/codeWorkspace/codebase-embedder/bin/swagger2.yaml")
+		if !splitter.splitOptions.EnableOpenAPIParsing {
+			assert.Error(t, err, "openapi file parse is close")
+		}
+		content, err := os.ReadFile("../../bin/swagger2.yaml")
 		assert.NoError(t, err, "应该能够读取 swagger2.yaml 文件")
 
 		sourceFile := &types.SourceFile{
@@ -476,6 +502,7 @@ func TestSplitOpenAPIFileErrorCases(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -519,6 +546,9 @@ func TestSplitOpenAPIFileErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if !splitter.splitOptions.EnableOpenAPIParsing {
+				assert.Error(t, err, "openapi file parse is close")
+			}
 			sourceFile := &types.SourceFile{
 				CodebaseId:   1,
 				CodebasePath: "/test/path",
@@ -547,6 +577,7 @@ func TestSplitMarkdownFile(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -659,6 +690,7 @@ func TestSplitMarkdownFileEdgeCases(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -719,6 +751,7 @@ func TestSplitRealMarkdownFile(t *testing.T) {
 		MaxTokensPerChunk:          1000,
 		SlidingWindowOverlapTokens: 100,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)
@@ -733,7 +766,7 @@ func TestSplitRealMarkdownFile(t *testing.T) {
 	}{
 		{
 			name:        "自定义知识库功能文档",
-			filePath:    "/Code/Go/zgsm-ai/codebase-embedder/docs/自定义知识库功能.md",
+			filePath:    "../../bin/自定义知识库功能.md",
 			expectError: false,
 			expectCount: 3, // 预期会分成3个主要部分：Epic 1、Epic 2、效果验收方案
 			description: "应该成功分割真实的自定义知识库功能文档",
@@ -831,6 +864,7 @@ func TestSplitMarkdownFileLargeContent(t *testing.T) {
 		MaxTokensPerChunk:          50, // 设置较小的 token 限制来测试分割
 		SlidingWindowOverlapTokens: 10,
 		EnableMarkdownParsing:      true,
+		EnableOpenAPIParsing:       true,
 	}
 	splitter, err := NewCodeSplitter(splitOptions)
 	assert.NoError(t, err)

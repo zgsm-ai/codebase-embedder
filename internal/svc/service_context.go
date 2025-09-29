@@ -85,6 +85,7 @@ func NewServiceContext(ctx context.Context, c config.Config) (*ServiceContext, e
 		MaxTokensPerChunk:          c.IndexTask.EmbeddingTask.MaxTokensPerChunk,
 		SlidingWindowOverlapTokens: c.IndexTask.EmbeddingTask.OverlapTokens,
 		EnableMarkdownParsing:      c.IndexTask.EmbeddingTask.EnableMarkdownParsing,
+		EnableOpenAPIParsing:       c.IndexTask.EmbeddingTask.EnableOpenAPIParsing,
 	})
 	if err != nil {
 		return nil, err
