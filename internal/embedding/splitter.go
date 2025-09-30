@@ -4,15 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oasdiff/yaml"
 	"github.com/tiktoken-go/tokenizer"
+	tree_sitter_markdown "github.com/tree-sitter-grammars/tree-sitter-markdown/bindings/go"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/zgsm-ai/codebase-indexer/internal/parser"
 	"github.com/zgsm-ai/codebase-indexer/internal/types"
+)
+
+const (
+	LanguageTypeCode = "code"
+	LanguageTypeDoc  = "doc"
 )
 
 type CodeSplitter struct {
@@ -24,6 +31,7 @@ type SplitOptions struct {
 	MaxTokensPerChunk          int
 	SlidingWindowOverlapTokens int
 	EnableMarkdownParsing      bool // 是否启用markdown文件解析
+	EnableOpenAPIParsing       bool // 是否启用OpenAPI文档解析
 }
 
 // NewCodeSplitter 创建代码分割器
@@ -53,14 +61,17 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 
 	// 特殊处理 markdown 文件 - 只有在配置开启时才解析markdown
 	if language.Language == parser.Markdown && p.splitOptions.EnableMarkdownParsing {
-		return p.splitMarkdownFile(codeFile)
+		return p.splitMarkdownFileBySitter(codeFile)
 	}
-	if language.Language == parser.OpenAPI || language.Language == parser.Swagger {
+	if (language.Language == parser.OpenAPI || language.Language == parser.Swagger)  {
+		if !p.splitOptions.EnableOpenAPIParsing{
+			return nil,fmt.Errorf("openapi file parse is close")
+		}
 		return p.splitOpenAPIFile(codeFile)
 	}
 
 	sitterParser := sitter.NewParser()
-
+	defer sitterParser.Close()
 	// 设置解析器语言（复用已创建的Parser）
 	if err := sitterParser.SetLanguage(language.SitterLanguage()); err != nil {
 		return nil, fmt.Errorf("failed to set parser language: %w", err)
@@ -101,11 +112,11 @@ func (p *CodeSplitter) Split(codeFile *types.SourceFile) ([]*types.CodeChunk, er
 
 			// 处理代码切块
 			if tokenCount > p.splitOptions.MaxTokensPerChunk {
-				subChunks := p.splitFuncWithSlidingWindow(string(content), codeFile, int(startPos.Row))
+				subChunks := p.splitFuncWithSlidingWindow(string(content), codeFile, int(startPos.Row), LanguageTypeCode)
 				allChunks = append(allChunks, subChunks...)
 			} else {
 				allChunks = append(allChunks, &types.CodeChunk{
-					Language:     "code",
+					Language:     LanguageTypeCode,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -163,7 +174,7 @@ func (p *CodeSplitter) countToken(content []byte) int {
 }
 
 // splitFuncWithSlidingWindow 使用滑动窗口将大函数分割成多个小块
-func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int) []*types.CodeChunk {
+func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int, languageType string) []*types.CodeChunk {
 	filePath := codeFile.Path
 	maxTokens := p.splitOptions.MaxTokensPerChunk
 	overlapTokens := p.splitOptions.SlidingWindowOverlapTokens
@@ -220,10 +231,10 @@ func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *type
 
 		// 计算结束行和列
 		endLine := startLine + countLines(chunkContent) - 1
-		endColumn := calculateColumn(content[startByte:endByte+1], endByte-startByte)
+		endColumn := calculateColumn(chunkContent, endByte-startByte)
 
 		chunks = append(chunks, &types.CodeChunk{
-			Language:     "code",
+			Language:     languageType,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -249,6 +260,81 @@ func (p *CodeSplitter) splitFuncWithSlidingWindow(content string, codeFile *type
 		// 防止索引越界
 		if startTokenIdx < 0 {
 			startTokenIdx = 0
+		}
+	}
+
+	return chunks
+}
+
+// splitTextWithSlidingWindow 使用滑动窗口将大文本分割成多个小块（基于字节数而非token数）
+func (p *CodeSplitter) splitTextWithSlidingWindow(content string, codeFile *types.SourceFile, funcStartLine int, languageType string) []*types.CodeChunk {
+	filePath := codeFile.Path
+	maxBytes := p.splitOptions.MaxTokensPerChunk * 4              // 将token转换为字节数
+	overlapBytes := p.splitOptions.SlidingWindowOverlapTokens * 4 // 将token转换为字节数
+
+	if maxBytes <= 0 || overlapBytes < 0 || overlapBytes >= maxBytes {
+		return nil
+	}
+
+	totalBytes := len(content)
+	if totalBytes == 0 {
+		return nil
+	}
+
+	// 预分配切片
+	estimatedChunks := (totalBytes + maxBytes - 1) / maxBytes
+	chunks := make([]*types.CodeChunk, 0, estimatedChunks)
+
+	startByteIdx := 0
+
+	for startByteIdx < totalBytes {
+		// 计算当前块的结束位置
+		endByteIdx := startByteIdx + maxBytes
+		if endByteIdx > totalBytes {
+			endByteIdx = totalBytes
+		}
+
+		// 提取代码块
+		chunkContent := content[startByteIdx:endByteIdx]
+
+		// 计算起始行和列
+		startLine := funcStartLine + countLines(content[:startByteIdx])
+		startColumn := calculateColumn(content, startByteIdx)
+
+		// 计算结束行和列
+		endLine := startLine + countLines(chunkContent) - 1
+		endColumn := calculateColumn(chunkContent, endByteIdx-startByteIdx)
+
+		// 计算token数量（用于兼容性，但不再用于分割逻辑）
+		tokenCount := (endByteIdx - startByteIdx) / 4 // 粗略估计：1token≈4字节
+
+		chunks = append(chunks, &types.CodeChunk{
+			Language:     languageType,
+			CodebaseId:   codeFile.CodebaseId,
+			CodebasePath: codeFile.CodebasePath,
+			CodebaseName: codeFile.CodebaseName,
+			Content:      []byte(chunkContent),
+			FilePath:     filePath,
+			Range:        []int{startLine, startColumn, endLine, endColumn},
+			TokenCount:   tokenCount,
+		})
+
+		if endByteIdx >= totalBytes {
+			break
+		}
+
+		// 计算下一个块的起始位置（应用滑动窗口）
+		if remaining := totalBytes - endByteIdx; remaining < maxBytes {
+			// 最后一块，调整重叠量
+			startByteIdx = endByteIdx - (maxBytes - remaining)
+		} else {
+			// 正常情况，使用固定重叠
+			startByteIdx = endByteIdx - overlapBytes
+		}
+
+		// 防止索引越界
+		if startByteIdx < 0 {
+			startByteIdx = 0
 		}
 	}
 
@@ -316,7 +402,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "doc",
+					Language:     LanguageTypeDoc,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -335,7 +421,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 					tokenCount := p.countToken([]byte(chunkContent))
 
 					chunks = append(chunks, &types.CodeChunk{
-						Language:     "doc",
+						Language:     LanguageTypeDoc,
 						CodebaseId:   codeFile.CodebaseId,
 						CodebasePath: codeFile.CodebasePath,
 						CodebaseName: codeFile.CodebaseName,
@@ -363,7 +449,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 				tokenCount := p.countToken([]byte(chunkContent))
 
 				chunks = append(chunks, &types.CodeChunk{
-					Language:     "doc",
+					Language:     LanguageTypeDoc,
 					CodebaseId:   codeFile.CodebaseId,
 					CodebasePath: codeFile.CodebasePath,
 					CodebaseName: codeFile.CodebaseName,
@@ -389,11 +475,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 			tokenCount := p.countToken([]byte(currentChunk.String()))
 			if tokenCount > p.splitOptions.MaxTokensPerChunk {
 				chunkContent := currentChunk.String()
-				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine)
-				for i, subChunk := range subChunks {
-					subChunk.Language = "doc"
-					subChunks[i] = subChunk
-				}
+				subChunks := p.splitFuncWithSlidingWindow(chunkContent, codeFile, currentLine, LanguageTypeDoc)
 				chunks = append(chunks, subChunks...)
 				currentChunk.Reset()
 				currentLine = i + 1
@@ -407,7 +489,7 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 		tokenCount := p.countToken([]byte(chunkContent))
 
 		chunks = append(chunks, &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -419,6 +501,270 @@ func (p *CodeSplitter) splitMarkdownFile(codeFile *types.SourceFile) ([]*types.C
 	}
 
 	return chunks, nil
+}
+
+// splitMarkdownFileBySitter 使用 tree-sitter 解析 markdown 文件并分割成多个代码块
+func (p *CodeSplitter) splitMarkdownFileBySitter(codeFile *types.SourceFile) ([]*types.CodeChunk, error) {
+	source := string(codeFile.Content)
+
+	// 创建 markdown 解析器
+	parser := sitter.NewParser()
+	defer parser.Close()
+
+	// 设置 markdown 语言
+	markdownLanguage := tree_sitter_markdown.Language()
+	if err := parser.SetLanguage(sitter.NewLanguage(markdownLanguage)); err != nil {
+		return nil, fmt.Errorf("failed to set markdown language: %w", err)
+	}
+
+	// 解析 markdown 内容
+	tree := parser.Parse(codeFile.Content, nil)
+	if tree == nil {
+		return nil, fmt.Errorf("failed to parse markdown: %s", codeFile.Path)
+	}
+	defer tree.Close()
+
+	rootNode := tree.RootNode()
+
+	// 收集所有标题节点并按位置排序
+	var allHeaders []*sitter.Node
+	collectAllHeaders(rootNode, &allHeaders)
+	allHeaders = sortHeadersByPosition(allHeaders)
+
+	var chunks []*types.CodeChunk
+
+	// 如果没有标题节点，返回空切片
+	if len(allHeaders) == 0 {
+		byteCount := len(codeFile.Content)
+		if byteCount > p.splitOptions.MaxTokensPerChunk*4 {
+			subChunks := p.splitTextWithSlidingWindow(source, codeFile, 0, LanguageTypeDoc)
+			chunks = append(chunks, subChunks...)
+		} else {
+			chunk := &types.CodeChunk{
+				Language:     LanguageTypeDoc,
+				CodebaseId:   codeFile.CodebaseId,
+				CodebasePath: codeFile.CodebasePath,
+				CodebaseName: codeFile.CodebaseName,
+				Content:      codeFile.Content,
+				FilePath:     codeFile.Path,
+				Range:        []int{0, 0, countLines(source) - 1, calculateColumn(source, len(source)-1)},
+				TokenCount:   byteCount / 4,
+			}
+			chunks = append(chunks, chunk)
+		}
+		return chunks, nil
+	}
+
+	// 为每个标题节点直接创建代码块
+	for i, header := range allHeaders {
+		// 获取当前标题的完整路径
+		headerPath := getHeaderPath(header, source, allHeaders)
+
+		// 查找下一个标题节点
+		var nextHeader *sitter.Node
+		if i < len(allHeaders)-1 {
+			nextHeader = allHeaders[i+1]
+		}
+
+		// 提取内容（不包含标题路径）
+		content := extractContentBetweenHeaders(header, nextHeader, source)
+
+		// 计算位置信息
+		startLine := int(header.EndPosition().Row)
+		startCol := int(header.EndPosition().Column)
+		var endLine, endCol int
+		if nextHeader != nil {
+			endLine = int(nextHeader.StartPosition().Row)
+			endCol = int(nextHeader.StartPosition().Column)
+		} else {
+			endLine = int(rootNode.EndPosition().Row)
+			endCol = int(rootNode.EndPosition().Column)
+		}
+
+		// 计算内容的token数量
+		tokenCount := p.countToken([]byte(content))
+
+		// 处理超过最大 token 数量的情况
+		if tokenCount > p.splitOptions.MaxTokensPerChunk {
+			// 使用滑动窗口分割大块内容
+			subChunks := p.splitTextWithSlidingWindow(content, codeFile, startLine, LanguageTypeDoc)
+
+			// 为每个子块添加标题路径
+			for _, subChunk := range subChunks {
+				// 构建完整的内容（标题路径 + 子块内容）
+				var fullContent strings.Builder
+
+				// 添加标题路径
+				for _, header := range headerPath {
+					fullContent.WriteString(header + "\n")
+				}
+
+				// 添加子块内容
+				fullContent.WriteString(string(subChunk.Content))
+
+				// 更新子块的内容和token数量
+				subChunk.Content = []byte(fullContent.String())
+				subChunk.TokenCount = p.countToken(subChunk.Content)
+
+				chunks = append(chunks, subChunk)
+			}
+		} else {
+			// 构建完整的内容（标题路径 + 内容）
+			var fullContent strings.Builder
+
+			// 添加标题路径
+			for _, header := range headerPath {
+				fullContent.WriteString(header + "\n")
+			}
+
+			// 添加内容
+			if content != "" {
+				fullContent.WriteString(content)
+			}
+
+			contentStr := fullContent.String()
+			finalTokenCount := p.countToken([]byte(contentStr))
+
+			// 创建代码块
+			chunk := &types.CodeChunk{
+				Language:     LanguageTypeDoc,
+				CodebaseId:   codeFile.CodebaseId,
+				CodebasePath: codeFile.CodebasePath,
+				CodebaseName: codeFile.CodebaseName,
+				Content:      []byte(contentStr),
+				FilePath:     codeFile.Path,
+				Range:        []int{startLine, startCol, endLine, endCol},
+				TokenCount:   finalTokenCount,
+			}
+			chunks = append(chunks, chunk)
+		}
+	}
+
+	return chunks, nil
+}
+
+// collectAllHeaders 收集所有标题节点
+func collectAllHeaders(node *sitter.Node, headers *[]*sitter.Node) {
+	// 如果是标题节点，添加到列表中
+	if node.Kind() == "atx_heading" {
+		*headers = append(*headers, node)
+	}
+
+	// 递归处理子节点
+	for i := uint(0); i < node.ChildCount(); i++ {
+		child := node.Child(i)
+		collectAllHeaders(child, headers)
+	}
+}
+
+// sortHeadersByPosition 按位置排序标题节点
+func sortHeadersByPosition(headers []*sitter.Node) []*sitter.Node {
+	for i := 0; i < len(headers)-1; i++ {
+		for j := i + 1; j < len(headers); j++ {
+			if headers[i].StartByte() > headers[j].StartByte() {
+				headers[i], headers[j] = headers[j], headers[i]
+			}
+		}
+	}
+	return headers
+}
+
+// getHeaderPath 获取标题的完整路径
+func getHeaderPath(headerNode *sitter.Node, source string, allHeaders []*sitter.Node) []string {
+	var path []string
+
+	// 获取当前标题在文档中的位置
+	currentStartByte := headerNode.StartByte()
+
+	// 找到当前标题在排序后列表中的位置
+	var currentIndex int
+	for i, header := range allHeaders {
+		if header.StartByte() == currentStartByte {
+			currentIndex = i
+			break
+		}
+	}
+
+	// 构建标题路径
+	var currentLevel int
+	currentTitle := extractTitleText(headerNode, source)
+	if currentTitle != "" {
+		// 获取当前标题的级别
+		currentLevel = getHeaderLevel(headerNode)
+		// 当前标题路径记录在path中，在后续content中不包含
+		path = append(path, currentTitle)
+	}
+
+	// 向前查找父级标题
+	for i := currentIndex - 1; i >= 0; i-- {
+		prevHeader := allHeaders[i]
+		prevLevel := getHeaderLevel(prevHeader)
+
+		// 如果前一个标题的级别小于当前标题的级别，则是父级标题
+		if prevLevel < currentLevel {
+			prevTitle := extractTitleText(prevHeader, source)
+			if prevTitle != "" {
+				path = append([]string{prevTitle}, path...)
+				currentLevel = prevLevel
+			}
+		}
+	}
+
+	return path
+}
+
+// extractTitleText 提取标题文本
+func extractTitleText(node *sitter.Node, source string) string {
+	if node.Kind() != "atx_heading" {
+		return ""
+	}
+
+	// 直接获取 atx_heading 节点的文本内容，保留 # 符号
+	return strings.TrimSpace(source[node.StartByte():node.EndByte()])
+}
+
+// getHeaderLevel 获取标题级别
+func getHeaderLevel(headerNode *sitter.Node) int {
+	if headerNode.Kind() != "atx_heading" {
+		return 0
+	}
+
+	// 查找 atx_h?_marker 子节点来确定级别
+	for i := uint(0); i < headerNode.ChildCount(); i++ {
+		child := headerNode.Child(i)
+		if strings.HasPrefix(child.Kind(), "atx_h") && strings.HasSuffix(child.Kind(), "_marker") {
+			// 从 atx_h1_marker 这样的字符串中提取数字
+			levelStr := strings.TrimPrefix(child.Kind(), "atx_h")
+			levelStr = strings.TrimSuffix(levelStr, "_marker")
+			if level, err := strconv.Atoi(levelStr); err == nil {
+				return level
+			}
+		}
+	}
+
+	return 0
+}
+
+// extractContentBetweenHeaders 提取两个标题之间的内容
+func extractContentBetweenHeaders(currentHeader, nextHeader *sitter.Node, source string) string {
+	startPos := int(currentHeader.EndByte())
+
+	var endPos int
+	if nextHeader != nil {
+		endPos = int(nextHeader.StartByte())
+	} else {
+		// 如果没有下一个标题，返回文档末尾
+		endPos = len(source)
+	}
+
+	if startPos >= endPos {
+		return ""
+	}
+
+	// 提取内容
+	content := source[startPos:endPos]
+
+	return content
 }
 
 type APIVersion string
@@ -548,7 +894,7 @@ func (p *CodeSplitter) splitOpenAPI3File(codeFile *types.SourceFile) ([]*types.C
 
 		// 创建代码块
 		chunk := &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,
@@ -616,7 +962,7 @@ func (p *CodeSplitter) splitSwagger2File(codeFile *types.SourceFile) ([]*types.C
 
 		// 创建代码块
 		chunk := &types.CodeChunk{
-			Language:     "doc",
+			Language:     LanguageTypeDoc,
 			CodebaseId:   codeFile.CodebaseId,
 			CodebasePath: codeFile.CodebasePath,
 			CodebaseName: codeFile.CodebaseName,

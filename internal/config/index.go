@@ -22,6 +22,7 @@ type EmbeddingTaskConf struct {
 	OverlapTokens         int
 	MaxTokensPerChunk     int
 	EnableMarkdownParsing bool `json:",default=false"` // 是否启用markdown文件解析
+	EnableOpenAPIParsing  bool `json:",default=false"` // 是否启用OpenAPI文档解析
 }
 
 type GraphTaskConf struct {

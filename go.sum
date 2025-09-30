@@ -320,6 +320,8 @@ github.com/tiktoken-go/tokenizer v0.6.2 h1:t0GN2DvcUZSFWT/62YOgoqb10y7gSXBGs0A+4
 github.com/tiktoken-go/tokenizer v0.6.2/go.mod h1:6UCYI/DtOallbmL7sSy30p6YQv60qNyU/4aVigPOx6w=
 github.com/tree-sitter-grammars/tree-sitter-kotlin v1.1.0 h1:SWIUDASa+WPhDDem1U5IJpYwQEezkqXrUI61OcnORzM=
 github.com/tree-sitter-grammars/tree-sitter-kotlin v1.1.0/go.mod h1:eH+flFf3QOa9c9BY9g3Bz02F7zTq30kGIG3cgB0lSlI=
+github.com/tree-sitter-grammars/tree-sitter-markdown v0.5.0 h1:93UWmJmfHbEiYmWF75ou2GE0fNlm0RwXRga3NGOCTEM=
+github.com/tree-sitter-grammars/tree-sitter-markdown v0.5.0/go.mod h1:Cw6XOdJRZZt7RKnDszrMJwsfTL+2mQRiz+nlE694HNY=
 github.com/tree-sitter/go-tree-sitter v0.25.0 h1:sx6kcg8raRFCvc9BnXglke6axya12krCJF5xJ2sftRU=
 github.com/tree-sitter/go-tree-sitter v0.25.0/go.mod h1:r77ig7BikoZhHrrsjAnv8RqGti5rtSyvDHPzgTPsUuU=
 github.com/tree-sitter/tree-sitter-c v0.24.1 h1:GV9DjvIV6uYe3W/JBKMFwE4hJcRxzRDq63llxNFHOkY=

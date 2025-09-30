@@ -20,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tiktoken-go/tokenizer v0.6.2
 	github.com/tree-sitter-grammars/tree-sitter-kotlin v1.1.0
+	github.com/tree-sitter-grammars/tree-sitter-markdown v0.5.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c v0.24.1
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.1

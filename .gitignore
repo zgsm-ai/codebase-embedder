@@ -32,3 +32,5 @@ docs/task.md
 cmd.sh
 testfiles
 .history
+.coignore
+.costrict
