@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/zeromicro/go-zero/core/logx"
 	"io"
 	"math"
 	"net/http"
@@ -391,8 +392,8 @@ func (r *weaviateWrapper) unmarshalSimilarSearchResponse(res *models.GraphQLResp
 			continue
 		}
 
-		// content := getStringValue(obj, Content)
-		content := ""
+		content := getStringValue(obj, Content)
+
 		filePath := getStringValue(obj, MetadataFilePath)
 
 		// 从MetadataRange中提取startLine和endLine（用于构建映射键）
@@ -1024,7 +1025,7 @@ func (r *weaviateWrapper) InsertCodeChunks(ctx context.Context, docs []*types.Co
 	if err != nil {
 		return err
 	}
-	tracer.WithTrace(ctx).Infof("embedded %d chunks for codebase %s successfully", len(docs), docs[0].CodebaseName)
+	tracer.WithTrace(ctx).Infof("embedded %d chunks for codebase %s successfully", len(chunks), docs[0].CodebaseName)
 
 	objs := make([]*models.Object, len(chunks), len(chunks))
 	for i, c := range chunks {
@@ -1311,14 +1312,14 @@ func (r *weaviateWrapper) createClassWithAutoTenantEnabled(client *goweaviate.Cl
 // generateTenantName 使用 MD5 哈希生成合规租户名（32字符，纯十六进制）
 func (r *weaviateWrapper) generateTenantName(clientId string, codebasePath string) (string, error) {
 	// 添加调试日志
-	fmt.Printf("[DEBUG] generateTenantName - 输入 clientId: %s, codebasePath: %s\n", clientId, codebasePath)
+	logx.Debugf("[DEBUG] generateTenantName - 输入 clientId: %s, codebasePath: %s\n", clientId, codebasePath)
 
 	if codebasePath == types.EmptyString {
-		fmt.Printf("[DEBUG] generateTenantName - codebasePath 为空字符串\n")
+		logx.Debugf("[DEBUG] generateTenantName - codebasePath 为空字符串\n")
 		return types.EmptyString, ErrInvalidCodebasePath
 	}
 	if clientId == types.EmptyString {
-		fmt.Printf("[DEBUG] generateTenantName - clientId 为空字符串\n")
+		logx.Debugf("[DEBUG] generateTenantName - clientId 为空字符串\n")
 		return types.EmptyString, ErrInvalidClientId
 	}
 
@@ -1327,7 +1328,7 @@ func (r *weaviateWrapper) generateTenantName(clientId string, codebasePath strin
 	hash := md5.Sum([]byte(combined))         // 计算 MD5 哈希
 	tenantName := hex.EncodeToString(hash[:]) // 转为32位十六进制字符串
 
-	fmt.Printf("[DEBUG] generateTenantName - 生成的 tenantName: %s\n", tenantName)
+	logx.Debugf("[DEBUG] generateTenantName - 生成的 tenantName: %s\n", tenantName)
 	return tenantName, nil
 }
 
