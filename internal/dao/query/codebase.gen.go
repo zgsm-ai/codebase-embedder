@@ -373,4 +373,3 @@ func (c *codebaseDo) withDO(do gen.Dao) *codebaseDo {
 	c.DO = *do.(*gen.DO)
 	return c
 }
-
