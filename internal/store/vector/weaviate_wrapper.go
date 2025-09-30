@@ -1352,7 +1352,8 @@ func (r *weaviateWrapper) unmarshalSummarySearchResponse(res *models.GraphQLResp
 
 	// 获取类名对应的数据
 	results, ok := data[r.className].([]interface{})
-	if !ok || len(results) == 0 {
+	// if !ok || len(results) == 0 {
+	if !ok {
 		return nil, fmt.Errorf("invalid response format: class data not found or has wrong type：%s", reflect.TypeOf(results).String())
 	}
 	var totalChunks, totalFiles int
