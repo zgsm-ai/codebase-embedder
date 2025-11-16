@@ -10,11 +10,9 @@ import (
 	"github.com/zgsm-ai/codebase-indexer/internal/tracer"
 
 	"github.com/panjf2000/ants/v2"
-	"github.com/zgsm-ai/codebase-indexer/internal/dao/model"
 	"github.com/zgsm-ai/codebase-indexer/internal/errs"
 	"github.com/zgsm-ai/codebase-indexer/internal/svc"
-	"github.com/zgsm-ai/codebase-indexer/internal/types"
-	"github.com/zgsm-ai/codebase-indexer/pkg/utils"
+	// "github.com/zgsm-ai/codebase-indexer/internal/types"
 )
 
 // baseProcessor 包含所有处理器共有的字段和方法
@@ -30,76 +28,77 @@ type baseProcessor struct {
 
 // initTaskHistory 初始化任务历史记录
 func (p *baseProcessor) initTaskHistory(ctx context.Context, taskType string) error {
-	taskHistory := &model.IndexHistory{
-		SyncID:       p.params.SyncID,
-		CodebaseID:   p.params.CodebaseID,
-		CodebasePath: p.params.CodebasePath,
-		TaskType:     taskType,
-		Status:       types.TaskStatusPending,
-		StartTime:    utils.CurrentTime(),
-	}
-	if err := p.svcCtx.Querier.IndexHistory.WithContext(ctx).Save(taskHistory); err != nil {
-		tracer.WithTrace(ctx).Errorf("insert task history failed: %v, data:%v", err, taskHistory)
-		return errs.InsertDatabaseFailed
-	}
-	p.taskHistoryId = taskHistory.ID
+	// taskHistory := &model.IndexHistory{
+	// 	SyncID:       p.params.SyncID,
+	// 	CodebaseID:   p.params.CodebaseID,
+	// 	CodebasePath: p.params.CodebasePath,
+	// 	TaskType:     taskType,
+	// 	Status:       types.TaskStatusPending,
+	// 	StartTime:    utils.CurrentTime(),
+	// }
+	// if err := p.svcCtx.Querier.IndexHistory.WithContext(ctx).Save(taskHistory); err != nil {
+	// 	tracer.WithTrace(ctx).Errorf("insert task history failed: %v, data:%v", err, taskHistory)
+	// 	return errs.InsertDatabaseFailed
+	// }
+	// p.taskHistoryId = taskHistory.ID
 	return nil
 }
 
 // updateTaskSuccess 更新任务状态为成功
 func (p *baseProcessor) updateTaskSuccess(ctx context.Context) error {
-	progress := float64(1)
-	m := &model.IndexHistory{
-		ID:                p.taskHistoryId,
-		Status:            types.TaskStatusSuccess,
-		Progress:          &progress,
-		EndTime:           utils.CurrentTime(),
-		TotalFileCount:    &p.totalFileCnt,
-		TotalSuccessCount: &p.successFileCnt,
-		TotalFailCount:    &p.failedFileCnt,
-		TotalIgnoreCount:  &p.ignoreFileCnt,
-	}
+	// progress := float64(1)
+	// m := &model.IndexHistory{
+	// 	ID:                p.taskHistoryId,
+	// 	Status:            types.TaskStatusSuccess,
+	// 	Progress:          &progress,
+	// 	EndTime:           utils.CurrentTime(),
+	// 	TotalFileCount:    &p.totalFileCnt,
+	// 	TotalSuccessCount: &p.successFileCnt,
+	// 	TotalFailCount:    &p.failedFileCnt,
+	// 	TotalIgnoreCount:  &p.ignoreFileCnt,
+	// }
 
-	res, err := p.svcCtx.Querier.IndexHistory.WithContext(ctx).
-		Where(p.svcCtx.Querier.IndexHistory.ID.Eq(m.ID)).
-		Updates(m)
-	if err != nil {
-		tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
-		return fmt.Errorf("upate task success failed: %w", err)
-	}
-	if res.RowsAffected == 0 {
-		tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
-		return fmt.Errorf("upate task success failed, codebaseId %d not found in database", p.params.CodebaseID)
-	}
-	if res.Error != nil {
-		tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
-		return fmt.Errorf("upate task success failed: %w", res.Error)
-	}
+	// res, err := p.svcCtx.Querier.IndexHistory.WithContext(ctx).
+	// 	Where(p.svcCtx.Querier.IndexHistory.ID.Eq(m.ID)).
+	// 	Updates(m)
+	// if err != nil {
+	// 	tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
+	// 	return fmt.Errorf("upate task success failed: %w", err)
+	// }
+	// if res.RowsAffected == 0 {
+	// 	tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
+	// 	return fmt.Errorf("upate task success failed, codebaseId %d not found in database", p.params.CodebaseID)
+	// }
+	// if res.Error != nil {
+	// 	tracer.WithTrace(ctx).Errorf("update task history %d failed: %v, model:%v", p.params.CodebaseID, err, m)
+	// 	return fmt.Errorf("upate task success failed: %w", res.Error)
+	// }
 	return nil
 }
 
 // handleIfTaskFailed 处理任务失败情况
 func (p *baseProcessor) handleIfTaskFailed(ctx context.Context, err error) bool {
-	if err != nil {
-		tracer.WithTrace(ctx).Errorf("index task failed, err: %v", err)
-		if errors.Is(err, errs.InsertDatabaseFailed) {
-			return true
-		}
-		status := types.TaskStatusFailed
-		if errors.Is(err, errs.RunTimeout) {
-			status = types.TaskStatusTimeout
-		}
-		_, err = p.svcCtx.Querier.IndexHistory.WithContext(ctx).
-			Where(p.svcCtx.Querier.IndexHistory.ID.Eq(p.taskHistoryId)).
-			UpdateColumnSimple(p.svcCtx.Querier.IndexHistory.Status.Value(status),
-				p.svcCtx.Querier.IndexHistory.ErrorMessage.Value(err.Error()))
-		if err != nil {
-			tracer.WithTrace(ctx).Errorf("update task history %d failed: %v", p.params.CodebaseID, err)
-		}
+	return true
+	// if err != nil {
+	// 	tracer.WithTrace(ctx).Errorf("index task failed, err: %v", err)
+	// 	if errors.Is(err, errs.InsertDatabaseFailed) {
+	// 		return true
+	// 	}
+	// 	status := types.TaskStatusFailed
+	// 	if errors.Is(err, errs.RunTimeout) {
+	// 		status = types.TaskStatusTimeout
+	// 	}
+	// 	_, err = p.svcCtx.Querier.IndexHistory.WithContext(ctx).
+	// 		Where(p.svcCtx.Querier.IndexHistory.ID.Eq(p.taskHistoryId)).
+	// 		UpdateColumnSimple(p.svcCtx.Querier.IndexHistory.Status.Value(status),
+	// 			p.svcCtx.Querier.IndexHistory.ErrorMessage.Value(err.Error()))
+	// 	if err != nil {
+	// 		tracer.WithTrace(ctx).Errorf("update task history %d failed: %v", p.params.CodebaseID, err)
+	// 	}
 
-		return true
-	}
-	return false
+	// 	return true
+	// }
+	// return false
 }
 
 // processFilesConcurrently 并发处理文件

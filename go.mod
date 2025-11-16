@@ -38,6 +38,7 @@ require (
 	github.com/weaviate/weaviate-go-client/v5 v5.2.0
 	github.com/zeromicro/go-zero v1.8.3
 	golang.org/x/tools v0.34.0
+	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gen v0.3.27
 	gorm.io/gorm v1.30.0
@@ -129,7 +130,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
 	google.golang.org/grpc v1.72.2 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/datatypes v1.2.5 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
